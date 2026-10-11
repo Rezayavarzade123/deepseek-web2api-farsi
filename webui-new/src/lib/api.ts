@@ -55,7 +55,7 @@ export async function api<T = unknown>(
   // can react via the auth-store subscription.
   if (res.status === 401) {
     useAuthStore.getState().logout()
-    throw new ApiCallError(401, '未授权，请重新登录')
+    throw new ApiCallError(401, 'Unauthorized. Please sign in again.')
   }
 
   if (!res.ok) {

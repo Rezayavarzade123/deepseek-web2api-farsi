@@ -50,7 +50,7 @@ def test_cached_session_is_reused_by_its_own_account(monkeypatch):
 
 def test_openai_user_is_preserved_and_required_for_cache():
     req = server.ChatCompletionRequest.model_validate({
-        "model": "deepseek-chat",
+        "model": "deepseek-flash",
         "messages": [{"role": "user", "content": "hello"}],
         "user": "alice",
     })

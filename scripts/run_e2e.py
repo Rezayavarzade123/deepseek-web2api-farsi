@@ -29,7 +29,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # password used by scenarios 2/3).
 ADMIN_PW_STRONG = "ci-e2e-strong-pw-9X7K2mQ4vR8w"
 API_KEY = "ci-e2e-key"
-MODEL_ROUTES_JSON = '{"deepseek-chat":"default","deepseek-reasoner":"expert"}'
+MODEL_ROUTES_JSON = '{"deepseek-flash":"default","deepseek-v4-pro":"expert"}'
 
 
 SCENARIO_1_PY = """
@@ -55,8 +55,8 @@ with TestClient(server.app) as client:
 
     # 3) MODEL_ROUTES populates /v1/models
     ids = sorted(m["id"] for m in r.json()["data"])
-    assert "deepseek-chat" in ids, ids
-    assert "deepseek-reasoner" in ids, ids
+    assert "deepseek-flash" in ids, ids
+    assert "deepseek-v4-pro" in ids, ids
     print(f"PASS: /v1/models lists MODEL_ROUTES entries: {ids}")
 
     # 4) /admin/api/stats exposes p50/p95/p99 + success_rate

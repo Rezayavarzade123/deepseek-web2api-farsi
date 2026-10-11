@@ -50,6 +50,12 @@ def _adapter():
     return DeepSeekAdapter(token="test-token", cookies="test-cookie")
 
 
+def test_adapter_requests_english_upstream_locale():
+    ad = _adapter()
+    assert ad._base_headers["Accept-Language"] == "en-US,en;q=0.9"
+    assert ad._base_headers["X-Client-Locale"] == "en_US"
+
+
 # ── hint / toast scanning ─────────────────────────────────────
 
 class TestHintScanning:
@@ -58,7 +64,7 @@ class TestHintScanning:
         sse = (
             "event: ready\ndata: {\"request_message_id\":1}\n\n"
             "event: hint\n"
-            "data: {\"type\":\"error\",\"content\":\"消息发送过于频繁，请稍后重试\","
+            "data: {\"type\":\"error\",\"content\":\"Too many requests. Please retry later.\","
             "\"finish_reason\":\"rate_limit_reached\"}\n\n"
             "event: close\ndata: {}\n\n"
         )
@@ -85,7 +91,7 @@ class TestHintScanning:
         ad = _adapter()
         sse = (
             "event: ready\ndata: {\"request_message_id\":1}\n\n"
-            "data: {\"v\":\"正常\"}\n\n"
+            "data: {\"v\":\"Normal response\"}\n\n"
         )
         events = ad._parse_sse(sse)
         assert ad._scan_hint_errors(events) is None
@@ -94,7 +100,7 @@ class TestHintScanning:
         ad = _adapter()
         sse = (
             "event: toast\n"
-            "data: {\"type\":\"error\",\"content\":\"使用专家模式请更新至最新版本\","
+            "data: {\"type\":\"error\",\"content\":\"Please update to the latest version to use expert mode\","
             "\"finish_reason\":\"unsupported_client_by_model\"}\n\n"
         )
         events = ad._parse_sse(sse)
@@ -116,13 +122,13 @@ class TestChatRetry:
                 return _FakeResp("")
             return _FakeResp(
                 "event: ready\ndata: {\"request_message_id\":1}\n\n"
-                "data: {\"v\":\"正常\"}\n\n"
+                "data: {\"v\":\"Normal response\"}\n\n"
             )
 
         monkeypatch.setattr(ad, "_send_completion", fake_send)
         monkeypatch.setattr(ad, "create_session", lambda: "sess-2")
         content, _ = ad.chat("sess-1", "prompt")
-        assert content == "正常"
+        assert content == "Normal response"
         assert calls["n"] == 2
 
     def test_raises_after_two_empty_responses(self, monkeypatch):
@@ -151,13 +157,13 @@ class TestChatRetry:
                 return _FakeResp(empty_sse)
             return _FakeResp(
                 "event: ready\ndata: {\"request_message_id\":1}\n\n"
-                "data: {\"v\":\"重试内容\"}\n\n"
+                "data: {\"v\":\"Retried response\"}\n\n"
             )
 
         monkeypatch.setattr(ad, "_send_completion", fake_send)
         monkeypatch.setattr(ad, "create_session", lambda: "sess-2")
         content, _ = ad.chat("sess-1", "prompt")
-        assert content == "重试内容"
+        assert content == "Retried response"
         assert calls["n"] == 2
 
     def test_rate_limit_backoff_then_success(self, monkeypatch):
@@ -170,7 +176,7 @@ class TestChatRetry:
             if calls["n"] < 3:
                 return _FakeResp(
                     "event: hint\n"
-                    "data: {\"type\":\"error\",\"content\":\"频繁\","
+                    "data: {\"type\":\"error\",\"content\":\"Too frequent\","
                     "\"finish_reason\":\"rate_limit_reached\"}\n\n"
                 )
             return _FakeResp(
@@ -191,7 +197,7 @@ class TestChatRetry:
         monkeypatch.setattr(ad, "_send_completion",
                             lambda *a, **k: _FakeResp(
                                 "event: hint\n"
-                                "data: {\"type\":\"error\",\"content\":\"频繁\","
+                                "data: {\"type\":\"error\",\"content\":\"Too frequent\","
                                 "\"finish_reason\":\"rate_limit_reached\"}\n\n"))
         monkeypatch.setattr(ad, "create_session", lambda: "sess-new")
         monkeypatch.setattr(A.time, "sleep", lambda s: None)
@@ -212,14 +218,14 @@ class TestChatStream:
                 return _FakeStreamResp("")  # empty body -> empty stream
             return _FakeStreamResp(
                 "event: ready\ndata: {\"request_message_id\":1}\n\n"
-                "data: {\"v\":\"流式内容\"}\n\n"
+                "data: {\"v\":\"Streamed response\"}\n\n"
             )
 
         monkeypatch.setattr(ad, "_pow_headers", lambda *a, **k: {})
         monkeypatch.setattr(ad, "_client", type("C", (), {"post": fake_post})())
         monkeypatch.setattr(ad, "create_session", lambda: "sess-2")
         tokens = list(ad.chat_stream("sess-1", "prompt"))
-        assert "流式内容" in tokens
+        assert "Streamed response" in tokens
         assert calls["n"] == 2
 
     def test_inline_hint_raises_rate_limit_error(self, monkeypatch):
@@ -227,7 +233,7 @@ class TestChatStream:
         resp = _FakeStreamResp(
             "event: ready\ndata: {\"request_message_id\":1}\n\n"
             "event: hint\n"
-            "data: {\"type\":\"error\",\"content\":\"消息发送过于频繁，请稍后重试\","
+            "data: {\"type\":\"error\",\"content\":\"Too many requests. Please retry later.\","
             "\"finish_reason\":\"rate_limit_reached\"}\n\n"
             "event: close\ndata: {}\n\n"
         )

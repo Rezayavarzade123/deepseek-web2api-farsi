@@ -35,11 +35,11 @@ export default function LoginPage() {
         body: { password },
       })
       setToken(res.token)
-      toast({ title: '登录成功', variant: 'success' })
+      toast({ title: 'Signed in successfully', variant: 'success' })
       const from = (location.state as { from?: string })?.from ?? '/'
       navigate(from, { replace: true })
     } catch (e) {
-      const msg = e instanceof ApiCallError ? e.message : '登录失败'
+      const msg = e instanceof ApiCallError ? e.message : 'Sign-in failed'
       setError(msg)
     } finally {
       setLoading(false)
@@ -66,13 +66,13 @@ export default function LoginPage() {
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 text-primary-foreground text-xl font-bold shadow-md">
             D
           </div>
-          <h1 className="text-xl font-semibold tracking-tight">DS2API 管理面板</h1>
-          <p className="text-sm text-muted-foreground">输入管理密码登录</p>
+          <h1 className="text-xl font-semibold tracking-tight">DS2API Admin Panel</h1>
+          <p className="text-sm text-muted-foreground">Enter the admin password to sign in</p>
         </div>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="password">管理密码</Label>
+            <Label htmlFor="password">Admin password</Label>
             <div className="relative">
               <Input
                 id="password"
@@ -91,7 +91,7 @@ export default function LoginPage() {
                 size="icon"
                 onClick={() => setShow(!show)}
                 className="absolute right-0 top-0 h-9 w-9 text-muted-foreground hover:text-foreground"
-                aria-label={show ? '隐藏密码' : '显示密码'}
+                aria-label={show ? 'Hide password' : 'Show password'}
                 tabIndex={-1}
               >
                 {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -107,7 +107,7 @@ export default function LoginPage() {
 
           <Button type="submit" className="w-full" disabled={loading || !password}>
             <LogIn className="h-4 w-4" />
-            {loading ? '登录中…' : '登录'}
+            {loading ? 'Signing in…' : 'Sign in'}
           </Button>
         </div>
       </form>

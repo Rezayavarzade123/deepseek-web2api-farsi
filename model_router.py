@@ -3,8 +3,8 @@ Model router — maps a client-supplied `model` field to a DeepSeek
 ``model_type`` and to per-model ``thinking_enabled`` / ``search_enabled``
 defaults.
 
-Configuration (env var):
-  ``MODEL_ROUTES='{"deepseek-chat":"default","deepseek-reasoner":"expert"}'``
+Configuration (environment variable):
+  ``MODEL_ROUTES='{"deepseek-flash":"default","deepseek-v4-pro":"expert"}'``
 
 A valid entry maps a public model name to one of:
   * ``"default"``  — quick mode, no thinking by default
