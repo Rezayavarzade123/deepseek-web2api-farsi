@@ -3,6 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useApi } from '@/hooks/useApi'
 import { ApiCallError } from '@/lib/api'
 import type { ModelsResponse } from '@/lib/types'
+import { useLanguage } from '@/lib/i18n'
 
 interface Props {
   value: string
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function ModelSelector({ value, onChange, labels }: Props) {
+  const { t } = useLanguage()
   const { data, error } = useApi<ModelsResponse>('/v1/models')
   const [firstRender, setFirstRender] = useState(true)
 
@@ -26,8 +28,7 @@ export function ModelSelector({ value, onChange, labels }: Props) {
   if (error) {
     return (
       <div className="text-xs text-destructive">
-        Could not load the model list:{' '}
-        {error instanceof ApiCallError ? error.message : String(error)}
+        {t('model.loadFailed', { error: error instanceof ApiCallError ? error.message : String(error) })}
       </div>
     )
   }
@@ -37,7 +38,7 @@ export function ModelSelector({ value, onChange, labels }: Props) {
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger>
-        <SelectValue placeholder="Select a model…" />
+        <SelectValue placeholder={t('model.selectPlaceholder')} />
       </SelectTrigger>
       <SelectContent>
         {models.map((m) => (

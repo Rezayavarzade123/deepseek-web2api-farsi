@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { post, put, ApiCallError } from '@/lib/api'
 import { toast } from '@/hooks/use-toast'
 import type { Account } from '@/lib/types'
+import { useLanguage } from '@/lib/i18n'
 
 interface Props {
   /** When set, the form is in "edit" mode. */
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export function AccountForm({ account, onSaved, onCancel }: Props) {
+  const { t } = useLanguage()
   const isEdit = !!account
   const [email, setEmail] = useState(account?.email ?? '')
   const [token, setToken] = useState('')
@@ -30,13 +32,13 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
         if (token) body.token = token
         if (cookies) body.cookies = cookies
         await put(`/admin/api/accounts/${encodeURIComponent(account.id)}`, body)
-        toast({ title: 'Account saved', variant: 'success' })
+        toast({ title: t('account.saved'), variant: 'success' })
         // Refetch the account to get the fresh data.
         const saved: Account = { ...account, email: email || account.email }
         onSaved(saved)
       } else {
         if (!token || !cookies) {
-          toast({ title: 'Token and cookies are required', variant: 'destructive' })
+          toast({ title: t('account.credentialsRequired'), variant: 'destructive' })
           setBusy(false)
           return
         }
@@ -45,7 +47,7 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
           cookies,
           email: email || '',
         })
-        toast({ title: 'Account added', variant: 'success' })
+        toast({ title: t('account.added'), variant: 'success' })
         onSaved(res.account)
         setEmail('')
         setToken('')
@@ -53,7 +55,7 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
       }
     } catch (e) {
       const msg = e instanceof ApiCallError ? e.message : String(e)
-      toast({ title: 'Save failed', description: msg, variant: 'destructive' })
+      toast({ title: t('account.saveFailed'), description: msg, variant: 'destructive' })
     } finally {
       setBusy(false)
     }
@@ -62,33 +64,36 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
   return (
     <div className="space-y-3">
       <div className="space-y-1.5">
-        <Label htmlFor="acct-email">Label (email / note)</Label>
+        <Label htmlFor="acct-email">{t('account.identifier')}</Label>
         <Input
           id="acct-email"
+          dir="auto"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="e.g. user@example.com"
+          placeholder={t('account.identifierPlaceholder')}
           autoComplete="off"
         />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="acct-token">Token</Label>
+        <Label htmlFor="acct-token">{t('account.token')}</Label>
         <Input
           id="acct-token"
+          dir="ltr"
           value={token}
           onChange={(e) => setToken(e.target.value)}
-          placeholder={isEdit ? 'Leave blank to keep the current token' : 'Authorization bearer token (omit "Bearer")'}
+          placeholder={t(isEdit ? 'account.tokenKeepPlaceholder' : 'account.tokenPlaceholder')}
           autoComplete="off"
           className="font-mono text-xs"
         />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="acct-cookies">Cookies</Label>
+        <Label htmlFor="acct-cookies">{t('account.cookies')}</Label>
         <Input
           id="acct-cookies"
+          dir="ltr"
           value={cookies}
           onChange={(e) => setCookies(e.target.value)}
-          placeholder={isEdit ? 'Leave blank to keep the current cookies' : 'cf_clearance=...; session=...'}
+          placeholder={t(isEdit ? 'account.cookiesKeepPlaceholder' : 'account.cookiesPlaceholder')}
           autoComplete="off"
           className="font-mono text-xs"
         />
@@ -96,17 +101,17 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
       <div className="flex items-center gap-2 pt-2">
         <Button onClick={handleSave} disabled={busy}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : isEdit ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-          {isEdit ? 'Save' : 'Add'}
+          {t(isEdit ? 'common.save' : 'common.add')}
         </Button>
         {isEdit && onCancel && (
           <Button variant="outline" onClick={onCancel} disabled={busy}>
-            Cancel
+            {t('common.cancel')}
           </Button>
         )}
       </div>
       {!isEdit && (
         <p className="text-xs text-muted-foreground">
-          The account is saved to data/accounts.json.
+          {t('account.savedToFile')}
         </p>
       )}
     </div>

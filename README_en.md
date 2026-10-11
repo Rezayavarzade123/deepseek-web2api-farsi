@@ -1,5 +1,7 @@
 # DeepSeek Web Chat API Proxy
 
+[English](README_en.md) · [فارسی](README_fa.md)
+
 > An unofficial proxy that adapts the private `chat.deepseek.com` web-chat protocol to OpenAI-compatible and Anthropic-compatible endpoints.
 
 **Important:** This project talks to DeepSeek's web application, not the official `api.deepseek.com` API. It uses a signed-in web account's token and cookies and solves the web client's proof-of-work challenge. The private protocol is undocumented and can change without notice. This project is not affiliated with DeepSeek; use it at your own risk and in compliance with DeepSeek's terms.
@@ -33,6 +35,7 @@ The private web protocol cannot be live-validated in this environment because it
 - Multi-account pool with round-robin selection, health checks, and recovery.
 - Per-key/per-IP rate limiting, usage statistics, and an admin dashboard.
 - Optional Fernet encryption for stored account credentials.
+- English and Persian (Farsi) WebUI language selector; Persian uses a right-to-left layout.
 
 ---
 

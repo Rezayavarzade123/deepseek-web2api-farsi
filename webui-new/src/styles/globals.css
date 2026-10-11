@@ -156,3 +156,20 @@
     background: hsl(var(--primary));
   }
 }
+
+/* Persian language direction and small layout mirrors. */
+html[dir='rtl'] body {
+  direction: rtl;
+  font-family: Tahoma, 'Segoe UI', Arial, sans-serif;
+}
+html[dir='rtl'] .rtl-flip {
+  transform: scaleX(-1);
+}
+html[dir='rtl'] code,
+html[dir='rtl'] pre,
+html[dir='rtl'] .font-mono,
+html[dir='rtl'] input[dir='ltr'] {
+  direction: ltr;
+  unicode-bidi: plaintext;
+  text-align: left;
+}

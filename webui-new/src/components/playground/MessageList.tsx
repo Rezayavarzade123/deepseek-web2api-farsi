@@ -2,10 +2,11 @@ import { useEffect, useRef } from 'react'
 import { User, Bot } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { useLanguage } from '@/lib/i18n'
 
 /**
- * A single conversation turn. `reasoning` (DeepSeek expert-mode
- * thinking text) renders in a collapsible block above the content.
+ * A single conversation turn. Any separate reasoning text is shown
+ * in a collapsible block above the answer.
  */
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -26,11 +27,12 @@ interface Props {
 
 /** Collapsible reasoning block shown above the answer. */
 function ReasoningBlock({ text }: { text: string }) {
+  const { t } = useLanguage()
   if (!text.trim()) return null
   return (
     <details className="mb-2 rounded-md bg-muted/60 p-2 text-xs text-muted-foreground">
-      <summary className="cursor-pointer select-none font-medium">Reasoning</summary>
-      <div className="mt-1.5 max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-mono leading-relaxed">
+      <summary className="cursor-pointer select-none font-medium">{t('playground.reasoning')}</summary>
+      <div dir="auto" className="mt-1.5 max-h-48 overflow-y-auto whitespace-pre-wrap break-words font-mono leading-relaxed">
         {text}
       </div>
     </details>
@@ -38,6 +40,7 @@ function ReasoningBlock({ text }: { text: string }) {
 }
 
 export function MessageList({ messages, streaming }: Props) {
+  const { t } = useLanguage()
   const endRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -48,8 +51,8 @@ export function MessageList({ messages, streaming }: Props) {
       <Card className="flex h-full items-center justify-center border-dashed">
         <CardContent className="text-center text-sm text-muted-foreground py-12">
           <Bot className="mx-auto h-8 w-8 mb-2 opacity-40 text-primary" />
-          <p>Enter a prompt on the left and click "Send"</p>
-          <p className="mt-1 text-xs">Create client API keys on the Settings page</p>
+          <p>{t('playground.emptyMessages')}</p>
+          <p className="mt-1 text-xs">{t('playground.createApiKey')}</p>
         </CardContent>
       </Card>
     )
@@ -76,8 +79,8 @@ export function MessageList({ messages, streaming }: Props) {
             )}
           >
             {m.role !== 'user' && m.reasoning && <ReasoningBlock text={m.reasoning} />}
-            <div className="whitespace-pre-wrap break-words">
-              {m.content || <span className="text-muted-foreground italic">(empty)</span>}
+            <div dir="auto" className="whitespace-pre-wrap break-words">
+              {m.content || <span className="text-muted-foreground italic">{t('common.empty')}</span>}
             </div>
           </div>
           {m.role === 'user' && (
@@ -96,15 +99,15 @@ export function MessageList({ messages, streaming }: Props) {
           <div className="max-w-[80%] rounded-lg border bg-card px-3 py-2 text-sm shadow-sm">
             {streaming.reasoning && (
               <div className="mb-2 rounded-md bg-muted/60 p-2 text-xs text-muted-foreground">
-                <div className="font-medium">Reasoning</div>
-                <div className="mt-1 whitespace-pre-wrap break-words font-mono leading-relaxed">
+                <div className="font-medium">{t('playground.reasoning')}</div>
+                <div dir="auto" className="mt-1 whitespace-pre-wrap break-words font-mono leading-relaxed">
                   {streaming.reasoning}
                 </div>
               </div>
             )}
             <div className="whitespace-pre-wrap break-words">
               {streaming.content}
-              <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-primary align-middle" />
+              <span className="ms-0.5 inline-block h-3.5 w-1.5 animate-pulse bg-primary align-middle" />
             </div>
           </div>
         </div>

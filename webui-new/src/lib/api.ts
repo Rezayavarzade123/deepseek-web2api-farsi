@@ -7,6 +7,7 @@
  */
 import { useAuthStore } from '@/stores/auth'
 import type { ApiError } from './types'
+import { getStoredLanguage, translate } from './i18n'
 
 export class ApiCallError extends Error {
   readonly status: number
@@ -55,7 +56,7 @@ export async function api<T = unknown>(
   // can react via the auth-store subscription.
   if (res.status === 401) {
     useAuthStore.getState().logout()
-    throw new ApiCallError(401, 'Unauthorized. Please sign in again.')
+    throw new ApiCallError(401, translate(getStoredLanguage(), 'common.unauthorized'))
   }
 
   if (!res.ok) {
