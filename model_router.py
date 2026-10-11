@@ -1,24 +1,26 @@
 """
-Model router — maps a client-supplied `model` field to a DeepSeek
-``model_type`` and to per-model ``thinking_enabled`` / ``search_enabled``
-defaults.
+Model router — maps a client-supplied ``model`` field to a private web-chat
+``model_type`` hint and optional per-model thinking/search overrides.
 
-Configuration (environment variable):
-  ``MODEL_ROUTES='{"deepseek-flash":"default","deepseek-v4-pro":"expert"}'``
+Example configuration::
 
-A valid entry maps a public model name to one of:
-  * ``"default"``  — quick mode, no thinking by default
-  * ``"expert"``   — R1-style reasoning, thinking enabled by default
-  * ``{"model_type": "expert", "thinking": "auto", "search": "enabled"}``
-    for full per-route control.
+  MODEL_ROUTES='{"deepseek-flash":"default"}'
+
+A route value may be ``"default"``, ``"expert"``, or an object such as
+``{"model_type":"expert","thinking":"auto","search":"enabled"}``.
+These are proxy-side hints for an undocumented web protocol, not official
+DeepSeek API model IDs. The upstream's current V4.1 experience combines
+capabilities that were previously exposed as separate modes; whether these
+legacy mode hints are still honored requires live verification.
 
 Resolution priority (highest first):
-  1. The exact client ``model`` field, if present and in the routing table.
-  2. The ``MODE`` / ``THINKING`` / ``SEARCH`` env-var values.
-  3. The per-request ``thinking_mode`` / ``search_enabled`` fields.
+  1. An exact client ``model`` field that matches the routing table.
+  2. ``MODE`` / ``THINKING`` / ``SEARCH`` environment fallbacks.
+  3. Per-request ``thinking_mode`` / ``search_enabled`` fields when the
+     corresponding environment settings are ``auto``.
 
-The router never raises on a missing model — it just falls through to the
-existing env-var logic so the proxy is backward-compatible.
+The router never raises on a missing model; it falls through to environment
+and request settings.
 """
 from __future__ import annotations
 

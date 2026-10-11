@@ -9,10 +9,7 @@
       },
       "models": {
         "deepseek-flash": {
-          "name": "DeepSeek quick-mode alias (local web route)"
-        },
-        "deepseek-v4-pro": {
-          "name": "DeepSeek expert-mode alias (local web route)"
+          "name": "DeepSeek Flash (local text-only proxy route)"
         }
       }
     }

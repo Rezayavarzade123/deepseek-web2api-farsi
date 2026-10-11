@@ -1,6 +1,7 @@
 """
 OpenAI-compatible API proxy for DeepSeek Chat
-Supports streaming, tool calling (via DSML prompt injection), content parts, expert mode.
+Supports streaming, DSML prompt-based tools, text content parts, and configurable
+private web-chat mode hints. The current upstream mode behavior is unverified.
 """
 import json
 import os
@@ -297,7 +298,7 @@ class ChatCompletionRequest(BaseModel):
     # OpenAI's top-level end-user identifier.  It is used only as one part of
     # an opaque, caller-scoped upstream-session cache key.
     user: Optional[str] = None
-    # Expert mode
+    # Private web-chat thinking hint; upstream mode semantics may change.
     thinking_mode: Optional[bool] = False
     search_enabled: Optional[bool] = False
 
@@ -498,6 +499,43 @@ def _extract_anthropic_user(req: AnthropicRequest, request: Request) -> str | No
 
 # ---- Message / prompt building ----
 
+def _unsupported_image_input() -> None:
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Image/multimodal input is not supported by this text-only proxy. "
+            "Use the official DeepSeek API for image input."
+        ),
+    )
+
+
+def _validate_openai_text_only(messages: list[ChatMessage]) -> None:
+    for message in messages:
+        if isinstance(message.content, list) and any(part.type != "text" for part in message.content):
+            _unsupported_image_input()
+
+
+def _contains_anthropic_image(value: Any) -> bool:
+    if isinstance(value, dict):
+        if value.get("type") == "image":
+            return True
+        return any(_contains_anthropic_image(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_contains_anthropic_image(item) for item in value)
+    if getattr(value, "type", None) == "image":
+        return True
+    if hasattr(value, "model_dump"):
+        return _contains_anthropic_image(value.model_dump())
+    return False
+
+
+def _validate_anthropic_text_only(req: AnthropicRequest) -> None:
+    if _contains_anthropic_image(req.system) or any(
+        _contains_anthropic_image(message.content) for message in req.messages
+    ):
+        _unsupported_image_input()
+
+
 def _extract_text(content: Union[str, list[ContentPart], None]) -> str:
     if content is None:
         return ""
@@ -654,6 +692,7 @@ async def list_models(request: Request):
 async def chat_completions(req: ChatCompletionRequest, request: Request):
     _check_api_auth(request)
     rate_headers = _check_rate_limit(request)
+    _validate_openai_text_only(req.messages)
     proxy_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     prompt = _build_prompt(req.messages, req.tools, req.tool_choice)
 
@@ -662,13 +701,13 @@ async def chat_completions(req: ChatCompletionRequest, request: Request):
     response_model = req.model or MODEL_NAME
     decision = MODEL_ROUTER.route_for(req.model)
 
-    # MODE controls model_type (quick → "default", expert → "expert")
+    # MODE controls the private model_type hint (expert is legacy/unverified).
     if decision.matched_model:
         model_type = decision.model_type
     elif MODE == "expert":
         model_type = "expert"
     else:
-        model_type = "default"  # quick mode or auto, matches native request format
+        model_type = "default"  # default private hint for auto / quick fallback
 
     # THINKING controls thinking_enabled independent of mode
     if decision.thinking is not None:
@@ -711,6 +750,7 @@ async def chat_completions(req: ChatCompletionRequest, request: Request):
 async def messages(req: AnthropicRequest, request: Request):
     _check_api_auth(request)
     rate_headers = _check_rate_limit(request)
+    _validate_anthropic_text_only(req)
     proxy_id = _msg_id()
     system_str = req.system
     if isinstance(system_str, list):

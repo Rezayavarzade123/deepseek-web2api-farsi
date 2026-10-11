@@ -7,7 +7,8 @@ This file documents the current implementation for maintainers and coding agents
 - The upstream adapter targets the **private web-chat protocol** at `https://chat.deepseek.com`, not the official `https://api.deepseek.com` API.
 - Upstream calls require a DeepSeek web-account token and cookies. The adapter solves the web client's proof-of-work challenge and parses the web app's SSE protocol.
 - The protocol is undocumented and may change independently of this repository. Do not claim live compatibility without testing against a real account and current web app.
-- As of 2026-10-11, the official API uses `deepseek-flash` for V4.1-Flash; the `deepseek-v4-pro` ID currently routes to V4.1-Flash until V4.1-Pro launches. The proxy exposes these familiar IDs only as **local aliases** for `default` and `expert` web-chat modes. It does not send those official IDs to the official API and does not guarantee the exact upstream model. Image input is not supported.
+- As of 2026-10-11, DeepSeek's official API lists `deepseek-flash` as V4.1-Flash with native vision and `deepseek-v4-pro` as V4-Pro-0813 (text only); the current official changelog says Pro API service continues with billing unchanged. DeepSeek's web app is reported to combine prior quick/expert/vision modes into an adaptive Flash experience, but that product report does not specify the private request protocol.
+- The checked-in proxy config exposes only `deepseek-flash` as a local `default`-mode hint. The optional `expert` value remains for compatibility, but may no longer select a separate mode. This proxy does not call the official API, does not guarantee the web app's model selection, and currently forwards text only; image upload/content conversion is not implemented.
 - Current release: v3.3.6. Key release notes: `docs/release-notes/v3.3.6.md`.
 
 ## Repository layout
@@ -33,9 +34,9 @@ This file documents the current implementation for maintainers and coding agents
 ## Request and model flow
 
 1. `/v1/chat/completions` or `/v1/messages` authenticates the client API key, checks rate limits, and validates the request.
-2. `model_router.ModelRouter` resolves a configured `model` alias to an upstream web-chat `model_type` (`default` or `expert`). An exact route can also override thinking and search settings.
+2. `model_router.ModelRouter` resolves a configured `model` alias to a private web-chat `model_type` hint (`default` or legacy `expert`). An exact route can also override thinking and search settings; the current upstream meaning of these hints is unverified.
 3. `MODE` is the fallback for unmatched model IDs. `THINKING` and `SEARCH` use route overrides first, then environment settings when set to `enabled` or `disabled`, and otherwise the request fields.
-4. The server converts OpenAI or Anthropic messages into the plain-text prompt used by the web client. Image/multimodal content is not supported.
+4. The server converts OpenAI or Anthropic messages into the plain-text prompt used by the web client. Image/multimodal input is explicitly rejected with HTTP 400 rather than silently discarded.
 5. `AcquiredAccount` selects an account and, when a stable caller identifier is supplied, may reuse an upstream session belonging to that same account.
 6. `DeepSeekAdapter` obtains/solves proof of work, creates or reuses a chat session, sends `/api/v0/chat/completion`, and decodes the upstream event stream.
 7. `StreamSieve` buffers possible DSML prefixes and separates ordinary text from tool-call markup. OpenAI or Anthropic response events are then emitted.
@@ -46,10 +47,10 @@ The checked-in `.env.example` uses:
 
 ```ini
 MODEL_NAME=deepseek-flash
-MODEL_ROUTES={"deepseek-flash":"default","deepseek-v4-pro":"expert"}
+MODEL_ROUTES={"deepseek-flash":"default"}
 ```
 
-`deepseek-flash` and `deepseek-v4-pro` are client-facing proxy aliases, not upstream request parameters. Add or edit aliases in `MODEL_ROUTES` to select the web-chat mode. A response echoes the model ID requested by the client; when the client omits it, the response uses `MODEL_NAME`. This echo is compatibility behavior, not a verified upstream model identity.
+`deepseek-flash` is a client-facing proxy alias, not an upstream official API request parameter. Add or edit aliases in `MODEL_ROUTES` to select private web-chat mode hints. The `expert` hint remains configurable for compatibility, but should not be presented as the official `deepseek-v4-pro` model or as a verified current web mode. A response echoes the model ID requested by the client; when the client omits it, the response uses `MODEL_NAME`. This echo is compatibility behavior, not a verified upstream model identity.
 
 Do not silently map multimodal API requests to text prompts. Keep the documented text-only limitation explicit unless multimodal request conversion and tests are implemented.
 
@@ -80,7 +81,7 @@ Do not use these notes as evidence of current live compatibility. Validate chang
 
 - OpenAI streams end with an explicit finish chunk and `data: [DONE]`. Keep the requested model alias consistent on every chunk, including reasoning, tool-call, finish, and error chunks.
 - Anthropic streams use `message_start`, content-block, `message_delta`, and `message_stop` events. Preserve the requested model ID in the returned message.
-- `reasoning_content` is emitted separately from answer text when upstream expert-mode fragments expose thinking content.
+- `reasoning_content` is emitted separately from answer text when upstream reasoning fragments are present; do not assume it is tied to a distinct expert model.
 - DSML tool calling is prompt-based and best-effort. Do not describe it as native function calling or promise strict `tool_choice` behavior.
 - OpenAI `usage` values are local estimates, not official upstream billing counts. Anthropic usage is currently returned as `-1` because the private web protocol does not provide compatible token counts.
 - `temperature`, `top_p`, and `max_tokens` are accepted for client compatibility but are not forwarded to the web endpoint.
@@ -121,8 +122,8 @@ The complete template is `.env.example`. Important defaults and behavior:
 |---|---|---|
 | `HOST` / `PORT` | `127.0.0.1` / `8080` | Loopback is the safe default. |
 | `MODEL_NAME` | `deepseek-flash` | Fallback model ID for responses and `/v1/models` when no route is configured. |
-| `MODEL_ROUTES` | Current Flash/Pro aliases in `.env.example` | JSON map to `default` / `expert`, optionally with thinking/search settings. |
-| `MODE` | `auto` | `auto`, `quick`, or `expert`; fallback for unmatched aliases. |
+| `MODEL_ROUTES` | `{"deepseek-flash":"default"}` | Local alias-to-private-hint map; optional `expert` is legacy/unverified. |
+| `MODE` | `auto` | Proxy-side fallback hint; `expert` is legacy and its current upstream effect is unverified. |
 | `THINKING` / `SEARCH` | `auto` | `auto`, `enabled`, or `disabled`. |
 | `SESSION_CACHE_TTL` | `1800` seconds | `0` disables upstream session reuse. |
 | `DEEPSEEK_MAX_CONCURRENCY` | `2` | Global upstream concurrency limit across accounts. |

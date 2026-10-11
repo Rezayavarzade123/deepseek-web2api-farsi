@@ -8,25 +8,26 @@ For expanded installation guidance, API details, FAQs, and the full configuratio
 
 ## DeepSeek model compatibility
 
-As of **October 11, 2026**, DeepSeek's official API uses `deepseek-flash` for DeepSeek-V4.1-Flash. The `deepseek-v4-pro` API ID is currently routed to V4.1-Flash at V4.1-Flash rates until V4.1-Pro launches, according to the [September model update](https://api-docs.deepseek.com/news/news260910/) and [V4-Pro release notice](https://api-docs.deepseek.com/news/news260813/). The legacy API IDs `deepseek-chat` and `deepseek-reasoner` were scheduled for retirement on July 24, 2026; see the [official change log](https://api-docs.deepseek.com/updates/).
+As of **October 11, 2026**, DeepSeek's official API lists `deepseek-flash` as V4.1-Flash with native vision support, and `deepseek-v4-pro` as V4-Pro-0813, which is text-only. The current [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/) page lists both; the [updated change log](https://api-docs.deepseek.com/updates/) says Pro API service continues after September 14, 2026, with billing unchanged. The legacy API IDs `deepseek-chat` and `deepseek-reasoner` were announced for retirement on July 24, 2026.
 
-This proxy now exposes `deepseek-flash` and `deepseek-v4-pro` as **local routing aliases** by default:
+DeepSeek V4.1-Flash combines visual understanding with strong reasoning capabilities. The web app's quick, expert, and vision experience has been reported as unified into an adaptive mode ([AIbase report](https://www.aibase.com/news/30949)); that product behavior is not a verified contract for this private web protocol.
+
+The proxy exposes one default **local route alias**:
 
 | Client model ID | Local route | Meaning inside this proxy |
 |---|---|---|
-| `deepseek-flash` | `default` | DeepSeek web-chat default/quick mode |
-| `deepseek-v4-pro` | `expert` | DeepSeek web-chat expert mode |
+| `deepseek-flash` | `default` | Default private web-chat route hint for the unified Flash experience |
 
-These IDs are not sent to `api.deepseek.com`, and the proxy does not guarantee which underlying model DeepSeek assigns to a web-chat mode. For official API features or multimodal input, use DeepSeek's official API directly and check its current model-routing documentation. This proxy currently supports **text only**.
+`deepseek-flash` is not sent to `api.deepseek.com`, and the proxy cannot guarantee which upstream model or mode the web app selects. Although V4.1-Flash supports vision, this proxy currently forwards text only; image upload/content conversion is not implemented. OpenAI non-text parts and Anthropic image blocks are rejected with HTTP 400 rather than silently dropped. Use DeepSeek's official API directly for image input or official API features.
 
-The upstream web protocol cannot be live-validated from this repository's test environment because it requires a real account and network access to DeepSeek. The offline test suite checks request mapping and compatibility behavior without contacting DeepSeek.
+The private web protocol cannot be live-validated in this environment because it requires a real account and access to DeepSeek. Offline tests verify local routing and compatibility behavior only.
 
 ## Features
 
 - OpenAI-compatible `POST /v1/chat/completions` and `GET /v1/models`, including streaming.
 - Anthropic-compatible `POST /v1/messages`, including streaming and tool-use blocks.
 - Client API-key authentication (`Authorization: Bearer` or `x-api-key`).
-- Default and expert routing, reasoning output, and optional web search flags.
+- A default local web-chat route plus configurable legacy expert/thinking/search hints; their effect on the current private protocol is unverified.
 - DSML prompt-based tool calling with streaming detection. Tool calling is best-effort, not native or guaranteed.
 - Automatic proof-of-work challenge solving, session management, and optional caller-scoped multi-turn session reuse.
 - Multi-account pool with round-robin selection, health checks, and recovery.
@@ -78,10 +79,10 @@ The default model routes are:
 
 ```ini
 MODEL_NAME=deepseek-flash
-MODEL_ROUTES={"deepseek-flash":"default","deepseek-v4-pro":"expert"}
+MODEL_ROUTES={"deepseek-flash":"default"}
 ```
 
-`MODEL_NAME` is the fallback model ID when a client omits `model`. `MODEL_ROUTES` maps client-provided IDs to web-chat modes; it does not forward an official API model ID. You may add your own aliases or mode settings.
+`MODEL_NAME` is the fallback model ID when a client omits `model`. `MODEL_ROUTES` maps client-provided IDs to private web-chat mode hints; it does not forward an official API model ID. The router retains an optional legacy `expert` hint, but that is not the official `deepseek-v4-pro` API model and may not select a separate upstream mode.
 
 If running API-only without a built WebUI, the legacy `API_KEYS` or `DEEPSEEK_API_KEY` settings can seed client authentication when the SQLite key store is first created. The values are imported once; remove them from `.env` afterward. The recommended ongoing workflow is to manage keys in WebUI > Settings.
 
@@ -146,7 +147,7 @@ Example request:
 
 ```json
 {
-  "model": "deepseek-v4-pro",
+  "model": "deepseek-flash",
   "messages": [
     {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Explain how TLS works."}
@@ -179,8 +180,8 @@ See `.env.example` for the complete commented template. Frequently used settings
 | `DEEPSEEK_ADMIN_PASSWORD` | `admin` | Admin WebUI password. Change before deployment. |
 | `ALLOW_UNAUTHENTICATED_API` | `false` | Disables client-key checks when enabled; local development only. |
 | `MODEL_NAME` | `deepseek-flash` | Fallback model ID returned when a request omits `model`. |
-| `MODEL_ROUTES` | current aliases | JSON mapping of public aliases to `default` / `expert` and optional thinking/search overrides. |
-| `MODE` | `auto` | `auto`, `quick`, or `expert`; fallback route for unmatched model IDs. |
+| `MODEL_ROUTES` | `{"deepseek-flash":"default"}` | Local alias map to private web-chat hints; `expert` is a legacy configurable hint, not an official API model. |
+| `MODE` | `auto` | `auto` / `quick` map to `default`; `expert` sends a legacy hint whose current upstream effect is unverified. |
 | `THINKING` | `auto` | `auto`, `enabled`, or `disabled`. |
 | `SEARCH` | `auto` | `auto`, `enabled`, or `disabled`. |
 | `ACCOUNT_STORE_PATH` | `data/accounts.json` | Account pool storage file. |
@@ -194,7 +195,7 @@ See `.env.example` for the complete commented template. Frequently used settings
 | `DEEPSEEK_IMPERSONATE` | `chrome131` | curl_cffi browser/TLS impersonation profile. |
 | `DEEPSEEK_JITTER_SECS` | `0.4` | Random delay before upstream calls to reduce burstiness. |
 
-`MODE`, `THINKING`, and `SEARCH` are overridden first by matching per-model route settings. If the route leaves a setting unspecified, the corresponding environment variable takes precedence over the request field.
+`MODE`, `THINKING`, and `SEARCH` describe the fields the proxy sends: matching route settings take precedence, then explicit environment settings, then request fields. The current unified web experience may ignore or reinterpret legacy mode hints; this has not been live-verified.
 
 ## Security and deployment
 

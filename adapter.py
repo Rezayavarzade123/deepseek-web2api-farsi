@@ -1,6 +1,6 @@
 """
-DeepSeek Chat API Adapter - WASM-based PoW solving, session management, streaming
-Supports expert mode (thinking_enabled, search_enabled).
+DeepSeek web-chat adapter - WASM-based PoW solving, session management, streaming
+Sends private model/thinking/search hints; current upstream mode semantics are unverified.
 
 Anti-detection upgrades (2026-06):
 - TLS/JA3 impersonation via curl_cffi (chrome131)
@@ -577,8 +577,8 @@ class DeepSeekAdapter:
 
         Returns ``(content, thinking)``:
           * ``content`` — the user-facing answer (concatenated text tokens).
-          * ``thinking`` — the expert-mode reasoning chain (empty string in
-            quick mode or when ``thinking_enabled`` is False).
+          * ``thinking`` — reasoning fragments emitted by the upstream (empty
+            when none are emitted or when ``thinking_enabled`` is False).
 
         Previously this method silently discarded ``thinking_parts``,
         which meant the Anthropic ``/v1/messages`` non-streaming endpoint
@@ -699,7 +699,7 @@ class DeepSeekAdapter:
             o = data.get("o", "")
             v = data.get("v", "")
 
-            # Expert mode: initial response with fragments
+            # Thinking output: initial response with fragments
             if isinstance(v, dict) and 'response' in v:
                 resp_data = v['response']
                 fragments = resp_data.get('fragments', [])
@@ -711,7 +711,7 @@ class DeepSeekAdapter:
                         (thinking_parts if frag_type == 'thinking' else content_parts).append(fc)
                 continue
 
-            # Expert mode: fragment content append
+            # Thinking output: fragment content append
             if p == "response/fragments/-1/content" and o == "APPEND":
                 if frag_type == 'thinking':
                     thinking_parts.append(v)
@@ -726,7 +726,7 @@ class DeepSeekAdapter:
                     content_parts.append(v)
                 continue
 
-            # Expert mode: fragment switch
+            # Thinking output: fragment switch
             if p == "response/fragments" and o == "APPEND":
                 if isinstance(v, list) and v:
                     new_type = v[0].get('type', '')
@@ -769,8 +769,9 @@ class DeepSeekAdapter:
                     ready_out: dict | None = None):
         """Stream a chat message, yields content tokens.
 
-        In expert mode (model_type='expert'), yields dicts with
-        __type='thinking' for reasoning tokens and strings for final content.
+        When the upstream emits separate thinking fragments (potentially
+        in response to the legacy expert hint), yields dicts with
+        __type='thinking' and strings for final content.
 
         ``parent_message_id`` is the message id from the previous turn; pass
         ``None`` to start a fresh thread.
@@ -947,7 +948,7 @@ class DeepSeekAdapter:
                         f"({t.get('finish_reason') or 'upstream_toast_error'})"
                     )
 
-                # Initial response with fragments (expert mode)
+                # Initial response with fragments (thinking output)
                 if isinstance(v, dict) and 'response' in v:
                     resp_data = v['response']
                     fragments = resp_data.get('fragments', [])
@@ -967,7 +968,7 @@ class DeepSeekAdapter:
                             yield content
                     continue
 
-                # Fragment content append (expert mode)
+                # Fragment content append (thinking output)
                 if p == "response/fragments/-1/content" and o == "APPEND":
                     if frag_type == 'thinking':
                         if v:
@@ -987,7 +988,7 @@ class DeepSeekAdapter:
                             yield v
                     continue
 
-                # Fragment switch (expert mode)
+                # Fragment switch (thinking output)
                 if p == "response/fragments" and o == "APPEND":
                     if isinstance(v, list) and v:
                         new_type = v[0].get('type', '')

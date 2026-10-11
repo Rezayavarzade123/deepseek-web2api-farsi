@@ -6,18 +6,19 @@
 
 ## DeepSeek model compatibility
 
-As of **October 11, 2026**, DeepSeek's official API uses `deepseek-flash` for DeepSeek-V4.1-Flash. The `deepseek-v4-pro` API ID is currently routed to V4.1-Flash at V4.1-Flash rates until V4.1-Pro launches, according to the [September model update](https://api-docs.deepseek.com/news/news260910/) and [V4-Pro release notice](https://api-docs.deepseek.com/news/news260813/). The legacy API IDs `deepseek-chat` and `deepseek-reasoner` were scheduled for retirement on July 24, 2026; see the [official change log](https://api-docs.deepseek.com/updates/).
+As of **October 11, 2026**, DeepSeek's official API lists `deepseek-flash` as V4.1-Flash, with native vision support, and `deepseek-v4-pro` as V4-Pro-0813, which is text-only. The current [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/) page lists both; the [updated change log](https://api-docs.deepseek.com/updates/) says Pro API service continues after September 14, 2026, with billing unchanged. The legacy API IDs `deepseek-chat` and `deepseek-reasoner` were announced for retirement on July 24, 2026.
 
-This proxy exposes the following **local routing aliases** by default:
+DeepSeek V4.1-Flash combines visual understanding with strong reasoning capabilities. The web app's quick, expert, and vision experience has been reported as unified into an adaptive mode ([AIbase report](https://www.aibase.com/news/30949)); this describes DeepSeek's product behavior, not a verified contract for its private web protocol.
+
+This proxy exposes one default **local route alias**:
 
 | Client model ID | Local route | Meaning inside this proxy |
 |---|---|---|
-| `deepseek-flash` | `default` | DeepSeek web-chat default/quick mode |
-| `deepseek-v4-pro` | `expert` | DeepSeek web-chat expert mode |
+| `deepseek-flash` | `default` | Default private web-chat route hint for the unified Flash experience |
 
-These IDs are not sent to `api.deepseek.com`, and the proxy does not guarantee which underlying model DeepSeek assigns to a web-chat mode. For official API features or multimodal input, use DeepSeek's official API directly and check its current model-routing documentation. This proxy currently supports text only.
+`deepseek-flash` is not forwarded to `api.deepseek.com`, and the proxy cannot guarantee which upstream model or mode the web app selects. Although the upstream V4.1-Flash model supports vision, this proxy currently forwards text only; image upload/content conversion is not implemented. OpenAI-style non-text parts and Anthropic image blocks are rejected with HTTP 400 rather than silently dropped. Use DeepSeek's official API directly for image input or official API features.
 
-The upstream web protocol cannot be live-validated from the offline test environment because it requires a real account and access to DeepSeek. Tests verify local request mapping and compatibility behavior only.
+The private web protocol cannot be live-validated in this environment because it requires a real account and access to DeepSeek. Offline tests verify local routing and compatibility behavior only.
 
 ---
 
@@ -26,7 +27,7 @@ The upstream web protocol cannot be live-validated from the offline test environ
 - OpenAI-compatible `POST /v1/chat/completions` and `GET /v1/models`, including streaming.
 - Anthropic-compatible `POST /v1/messages`, including streaming and tool-use blocks.
 - Client API-key authentication (`Authorization: Bearer` or `x-api-key`).
-- Default/expert routing, reasoning output, and optional web-search flags.
+- A default local web-chat route plus configurable legacy expert/thinking/search hints; their effect on the current private protocol is unverified.
 - DSML prompt-based tool calling with streaming detection. Tool calling is best-effort, not native or guaranteed.
 - Automatic proof-of-work solving, session management, and optional caller-scoped multi-turn session reuse.
 - Multi-account pool with round-robin selection, health checks, and recovery.
@@ -105,8 +106,8 @@ DEEPSEEK_ADMIN_PASSWORD=change-this-to-a-strong-password
 
 # DeepSeek accounts are configured only in WebUI > Account Pool or data/accounts.json.
 
-# Local client-facing aliases; these select web-chat modes and are not sent to the official API.
-MODEL_ROUTES={"deepseek-flash":"default","deepseek-v4-pro":"expert"}
+# The current default local route; this is a private web-chat hint, not an official API mapping.
+MODEL_ROUTES={"deepseek-flash":"default"}
 
 # Fallback client-facing model ID when a request omits "model".
 MODEL_NAME=deepseek-flash
@@ -115,8 +116,8 @@ MODEL_NAME=deepseek-flash
 HOST=127.0.0.1
 PORT=8080
 
-# Fallback mode for model IDs not listed in MODEL_ROUTES.
-# auto/quick selects default; expert selects expert. Matching routes take precedence.
+# Fallback for IDs not in MODEL_ROUTES. `expert` is a legacy private mode hint;
+# its effect on the current unified upstream experience is unverified.
 MODE=auto
 THINKING=auto
 SEARCH=auto
@@ -157,8 +158,7 @@ curl http://localhost:8080/health
 curl http://localhost:8080/v1/models \
   -H "Authorization: Bearer ***"
 # → {"object":"list","data":[
-#      {"id":"deepseek-flash",...},
-#      {"id":"deepseek-v4-pro",...}   # local expert-mode route alias
+#      {"id":"deepseek-flash",...}   # local default route alias
 #   ]}
 ```
 
@@ -315,7 +315,7 @@ Anthropic Claude API-compatible chat completion endpoint.
 
 ```json
 {
-  "model": "deepseek-v4-pro",
+  "model": "deepseek-flash",
   "max_tokens": 1024,
   "messages": [
     {"role": "user", "content": "Hello!"}
@@ -352,7 +352,7 @@ Anthropic Claude API-compatible chat completion endpoint.
   "content": [
     {"type": "text", "text": "Hello! How can I help you?"}
   ],
-  "model": "deepseek-v4-pro",
+  "model": "deepseek-flash",
   "stop_reason": "end_turn",
   "stop_sequence": null,
   "usage": {"input_tokens": -1, "output_tokens": -1}
@@ -374,7 +374,7 @@ Native Anthropic SSE format, containing `message_start`, `content_block_start`, 
 
 ```
 event: message_start
-data: {"type":"message_start","message":{"id":"msg_...","type":"message","role":"assistant","content":[],"model":"deepseek-v4-pro","stop_reason":null,...}}
+data: {"type":"message_start","message":{"id":"msg_...","type":"message","role":"assistant","content":[],"model":"deepseek-flash","stop_reason":null,...}}
 
 event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}
@@ -405,46 +405,27 @@ The response echoes the requested `model` ID. Anthropic usage is currently retur
 
 ---
 
-## MODE / THINKING / SEARCH explained
+## Private web-chat mode hints
 
-These three environment variables are independent control dimensions that together decide each request's behavior:
+DeepSeek's current web experience is reported to combine the former quick, expert, and vision modes into one adaptive Flash experience. The proxy still accepts these environment settings and translates them into private request fields, but their current effect on DeepSeek's undocumented protocol has not been live-verified. They are not official API model selectors.
 
-| Env var | Values | Default | Description |
-|----------|--------|------|------|
-| `MODE` | `auto` / `quick` / `expert` | `auto` | Fallback for unmatched IDs: `auto` / `quick` → `default`, `expert` → `expert`. |
-| `THINKING` | `auto` / `enabled` / `disabled` | `auto` | Fallback for thinking; a matching route value takes precedence. |
-| `SEARCH` | `auto` / `enabled` / `disabled` | `auto` | Fallback for web search; a matching route value takes precedence. |
+| Setting | Values | Proxy-side behavior |
+|---|---|---|
+| `MODE` | `auto` / `quick` / `expert` | `auto` / `quick` sends the `default` mode hint; `expert` sends the legacy `expert` hint. |
+| `THINKING` | `auto` / `enabled` / `disabled` | `auto` respects the client request; the other values force the corresponding request flag. |
+| `SEARCH` | `auto` / `enabled` / `disabled` | `auto` respects the client request where available; the other values force the corresponding request flag. |
 
-Precedence: a matching `MODEL_ROUTES` entry wins first. For unmatched model IDs, `MODE` chooses the web-chat mode. Per-model thinking/search overrides come first; otherwise `THINKING` / `SEARCH` environment settings of `enabled` or `disabled` override request fields. When a setting is `auto`, the request field is used.
-
-### Combination examples
-
-| MODE | THINKING | SEARCH | Behavior | Typical use case |
-|------|----------|--------|----------|----------|
-| `auto` | `auto` | `auto` | decided by client `thinking_mode` / `search_enabled` | fully flexible client control |
-| `quick` | `disabled` | `auto` | force the web-chat default mode with thinking disabled | low latency, no deep reasoning needed |
-| `expert` | `enabled` | `enabled` | request expert mode with thinking and web search enabled | deeper reasoning and current information where supported |
-| `quick` | `enabled` | `disabled` | default mode + thinking requested, search off | faster mode with reasoning output where supported |
-
-### Env var / request parameter interplay
-
-The examples below assume the requested model ID does not match a `MODEL_ROUTES` entry with explicit overrides.
-
-```
-MODE=auto, THINKING=auto, SEARCH=auto, request thinking_mode=true  →  default mode + thinking requested
-MODE=expert, THINKING=disabled, request thinking_mode=true  →  expert mode + thinking disabled + search decided by client
-MODE=quick, THINKING=enabled, SEARCH=disabled  →  default mode + thinking requested + web search disabled
-```
+A matching `MODEL_ROUTES` entry takes precedence over `MODE`. Per-route thinking/search overrides take precedence over their environment settings; when those settings are `auto`, the request fields are used. These describe what the proxy sends, not a guarantee about how the current upstream app responds.
 
 ---
 
 ## Reasoning / Thinking Output
 
-When thinking is enabled, reasoning tokens are exposed via the `reasoning_content` field in both streaming and non-streaming responses.
+If the upstream emits reasoning while thinking is enabled, the proxy exposes it in the `reasoning_content` field in streaming and non-streaming responses.
 
 ### Reasoning in streaming responses
 
-When thinking is enabled (including on routes configured for expert mode), the SSE stream may output reasoning fragments before the final answer:
+When thinking is enabled and the upstream emits reasoning, the SSE stream may output reasoning fragments before the final answer:
 
 ```
 data: {"id":"...","choices":[{"index":0,"delta":{"reasoning_content":""},"finish_reason":null}]}
@@ -558,14 +539,20 @@ curl http://localhost:8080/v1/chat/completions \
 
 ## Model routing
 
-`MODEL_ROUTES` maps client-facing aliases to the web-chat `model_type` (`default` or `expert`) and can optionally specify thinking/search defaults:
+The checked-in configuration exposes `deepseek-flash` as the single default local route:
 
-```bash
-MODEL_ROUTES={"deepseek-flash":"default","deepseek-v4-pro":"expert"}
-MODEL_ROUTES={"deepseek-v4-pro":{"model_type":"expert","thinking":"enabled","search":"disabled"}}
+```ini
+MODEL_NAME=deepseek-flash
+MODEL_ROUTES={"deepseek-flash":"default"}
 ```
 
-The aliases are local route names, not official API model IDs. A matched route takes precedence over `MODE`; per-route thinking/search overrides take precedence over their environment settings. Unmatched IDs use `MODE`, `THINKING`, and `SEARCH` fallback behavior. `GET /v1/models` returns IDs declared in `MODEL_ROUTES`, or the `MODEL_NAME` fallback if the route table is empty. Responses echo the client-supplied ID; this does not identify the model behind the web-chat mode.
+`MODEL_ROUTES` values are private web-chat mode hints, not official API model IDs. The router still supports a custom `expert` hint for compatibility, but it is not the official `deepseek-v4-pro` model and may no longer select a separate upstream mode. For example, a custom alias can be configured as:
+
+```ini
+MODEL_ROUTES={"deepseek-flash":"default","my-legacy-expert":{"model_type":"expert","thinking":"enabled","search":"disabled"}}
+```
+
+A matched route takes precedence over `MODE`; per-route thinking/search overrides take precedence over their environment settings. Unmatched IDs use `MODE`, `THINKING`, and `SEARCH` fallbacks. `GET /v1/models` returns configured route IDs, or the `MODEL_NAME` fallback if no routes are configured. Responses echo the client-supplied ID; the echo does not identify the upstream model or prove that the requested ID has a corresponding route.
 
 ---
 
@@ -834,10 +821,10 @@ Client API keys are managed in WebUI > Settings, and only hashes are stored in S
 | Variable | Default | Description |
 |------|--------|------|
 | `MODEL_NAME` | `deepseek-flash` | Fallback client-facing ID for requests that omit `model`; used by `/v1/models` when no routes are configured. |
-| `MODE` | `auto` | Fallback mode for unmatched IDs: `auto` / `quick` select `default`; `expert` selects `expert`. A matching route wins first. |
+| `MODE` | `auto` | Proxy-side fallback: `auto` / `quick` send `default`; `expert` sends a legacy hint whose current upstream effect is unverified. A matching route wins first. |
 | `THINKING` | `auto` | `auto` / `enabled` / `disabled`; matching route settings take precedence. |
 | `SEARCH` | `auto` | `auto` / `enabled` / `disabled`; matching route settings take precedence. |
-| `MODEL_ROUTES` | see `.env.example` | JSON map of local aliases to web-chat modes with optional thinking/search overrides. |
+| `MODEL_ROUTES` | `{"deepseek-flash":"default"}` | Local alias-to-hint map; optional legacy `expert` values are private-protocol hints, not official model IDs. |
 
 ### Admin panel
 

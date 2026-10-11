@@ -104,9 +104,9 @@ class _SuccessfulAcquired:
 
 
 def test_openai_responses_echo_the_requested_model_alias():
-    chunk = server._openai_chunk("chatcmpl_test", model="deepseek-v4-pro")
+    chunk = server._openai_chunk("chatcmpl_test", model="client-custom-alias")
     payload = json.loads(chunk.removeprefix("data: ").strip())
-    assert payload["model"] == "deepseek-v4-pro"
+    assert payload["model"] == "client-custom-alias"
 
 
 def test_openai_tool_call_chunks_echo_the_requested_model_alias():
@@ -116,14 +116,14 @@ def test_openai_tool_call_chunks_echo_the_requested_model_alias():
             "function": {"name": "lookup", "arguments": '{"query":"example"}'},
         }],
         "chatcmpl_test",
-        model="deepseek-v4-pro",
+        model="client-custom-alias",
     )
 
     models = [
         json.loads(chunk.removeprefix("data: ").strip())["model"]
         for chunk in chunks
     ]
-    assert models == ["deepseek-v4-pro"] * len(chunks)
+    assert models == ["client-custom-alias"] * len(chunks)
 
 
 def test_openai_nonstream_response_echoes_the_requested_model_alias(monkeypatch):
@@ -131,10 +131,10 @@ def test_openai_nonstream_response_echoes_the_requested_model_alias(monkeypatch)
     monkeypatch.setattr(server, "_acquire", lambda cache_key=None: acquired)
 
     response = server._handle_nonstream(
-        "chatcmpl_test", "User: hello", response_model="deepseek-v4-pro"
+        "chatcmpl_test", "User: hello", response_model="client-custom-alias"
     )
 
-    assert response["model"] == "deepseek-v4-pro"
+    assert response["model"] == "client-custom-alias"
     assert acquired.released is True
 
 
@@ -143,10 +143,10 @@ def test_anthropic_nonstream_response_echoes_the_requested_model_alias(monkeypat
     monkeypatch.setattr(server, "_acquire", lambda cache_key=None: acquired)
 
     response = server._anthropic_nonstream(
-        "msg_test", "User: hello", [], response_model="deepseek-v4-pro"
+        "msg_test", "User: hello", [], response_model="client-custom-alias"
     )
 
-    assert response["model"] == "deepseek-v4-pro"
+    assert response["model"] == "client-custom-alias"
     assert acquired.released is True
 
 
@@ -156,7 +156,7 @@ def test_openai_stream_chunks_echo_the_requested_model_alias(monkeypatch):
 
     async def collect():
         response = await server._handle_stream(
-            "chatcmpl_test", "User: hello", response_model="deepseek-v4-pro"
+            "chatcmpl_test", "User: hello", response_model="client-custom-alias"
         )
         chunks = []
         async for chunk in response.body_iterator:
@@ -168,7 +168,7 @@ def test_openai_stream_chunks_echo_the_requested_model_alias(monkeypatch):
     model_ids = [json.loads(item)["model"] for item in data if item != "[DONE]"]
 
     assert model_ids
-    assert set(model_ids) == {"deepseek-v4-pro"}
+    assert set(model_ids) == {"client-custom-alias"}
     assert acquired.released is True
 
 
@@ -178,7 +178,7 @@ def test_anthropic_stream_message_echoes_the_requested_model_alias(monkeypatch):
 
     async def collect():
         response = await server._anthropic_stream(
-            "msg_test", "User: hello", [], response_model="deepseek-v4-pro"
+            "msg_test", "User: hello", [], response_model="client-custom-alias"
         )
         events = []
         async for event in response.body_iterator:
@@ -192,5 +192,5 @@ def test_anthropic_stream_message_echoes_the_requested_model_alias(monkeypatch):
         if line.startswith("data: ") and '"type": "message_start"' in line
     )
 
-    assert json.loads(message_start)["message"]["model"] == "deepseek-v4-pro"
+    assert json.loads(message_start)["message"]["model"] == "client-custom-alias"
     assert acquired.released is True
