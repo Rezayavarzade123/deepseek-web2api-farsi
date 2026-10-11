@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "DS2API DeepSeek Credential Capture (Local)",
+  "version": "1.0.0",
+  "minimum_chrome_version": "102",
+  "description": "One-shot local capture of your signed-in DeepSeek chat request headers. Credentials are never sent to a server.",
+  "permissions": [
+    "webRequest",
+    "storage",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "https://chat.deepseek.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_title": "Capture DeepSeek credentials",
+    "default_popup": "popup.html"
+  }
+}

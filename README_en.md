@@ -36,6 +36,7 @@ The private web protocol cannot be live-validated in this environment because it
 - Per-key/per-IP rate limiting, usage statistics, and an admin dashboard.
 - Optional Fernet encryption for stored account credentials.
 - English and Persian (Farsi) WebUI language selector; Persian uses a right-to-left layout.
+- Optional one-shot Chromium helper to copy your own DeepSeek chat token and Cookie header locally; see [the helper guide](tools/chromium-credential-capture/README.md).
 
 ---
 
@@ -87,6 +88,8 @@ You need to extract your DeepSeek credentials from the browser developer tools:
 |------|------|------|
 | Token | Value after `Bearer` in the `Authorization` header | Copy from the request headers |
 | Cookies | Full value of the `Cookie` header | Copy from the request headers |
+
+For Chrome, Edge, or Brave, the optional [one-shot credential helper](tools/chromium-credential-capture/README.md) can capture the next matching request after you explicitly arm it. It copies values only when you press a copy button; it does not upload them.
 
 > Add credentials on the WebUI "Account Pool" page or store them in `data/accounts.json`. Account credentials are no longer read from `.env`.
 
