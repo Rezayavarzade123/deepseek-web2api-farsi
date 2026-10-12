@@ -77,6 +77,8 @@ Open a new terminal after installation and run:
 ds2api
 ```
 
+On Windows, the installer adds a `ds2api.cmd` launcher, so `ds2api` works by name in both Command Prompt and PowerShell.
+
 The installer creates `.env` with a generated admin password and displays that password once. Save it securely. On Windows, the default install location is `%LOCALAPPDATA%\Programs\DS2API`; on macOS/Linux it is `${XDG_DATA_HOME:-~/.local/share}/ds2api`. The installer preserves `.env` and `data/` when rerun to update. If Node.js is not found, installation continues in API-only mode; install Node.js 20+ and rerun to build the WebUI. Pass `--skip-webui` to intentionally skip that build.
 
 To uninstall, run the system Python against the installed script (not the app's virtualenv): `py -3 "$env:LOCALAPPDATA\Programs\DS2API\scripts\uninstall.py"` in Windows PowerShell, or `python3 ~/.local/share/ds2api/scripts/uninstall.py` on macOS/Linux. It removes the PATH command and application files while preserving `.env` and `data/`. Add `--purge-user-data` only if you also want to delete stored settings and account credentials. If you chose a custom `--install-dir`, substitute that path.

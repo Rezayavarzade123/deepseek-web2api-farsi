@@ -67,7 +67,7 @@ py -3 scripts\install.py
 python3 scripts/install.py
 ```
 
-The installer creates a virtual environment, installs Python dependencies, builds the WebUI when Node.js 20+ is available, and adds the `ds2api` command to your user PATH. Open a new terminal and run `ds2api` to start the service. On first install, it generates and displays an admin password once; save it securely. The installer creates `.env` and preserves `.env` and `data/` when you rerun it to update.
+The installer creates a virtual environment, installs Python dependencies, builds the WebUI when Node.js 20+ is available, and adds the `ds2api` command to your user PATH. Open a new terminal and run `ds2api` to start the service. On Windows, the generated `ds2api.cmd` launcher is callable by that name from both Command Prompt and PowerShell. On first install, it generates and displays an admin password once; save it securely. The installer creates `.env` and preserves `.env` and `data/` when you rerun it to update.
 
 If Node.js is not installed, setup completes in API-only mode. Install Node.js 20+ and rerun the installer to build the WebUI. You can also pass `--skip-webui` to intentionally install API-only.
 

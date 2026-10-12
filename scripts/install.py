@@ -470,7 +470,10 @@ def main() -> int:
     update_user_path(bin_dir)
 
     print("\nInstallation complete.")
-    print("Open a new terminal and run: ds2api")
+    if os.name == "nt":
+        print("Open a new Command Prompt or PowerShell window and run: ds2api")
+    else:
+        print("Open a new terminal and run: ds2api")
     print("The service uses the HOST and PORT in .env (default: 127.0.0.1:8080).")
     if webui_ready:
         print("WebUI: http://127.0.0.1:8080/webui/")
