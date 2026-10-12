@@ -90,7 +90,29 @@ The examples update the current shell's PATH so you can start the app immediatel
 
 #### Open the WebUI
 
-After `ds2api` reports that the server has started, open [http://127.0.0.1:8080/webui/](http://127.0.0.1:8080/webui/) in your browser and sign in with the default password `admin` (unless you changed `DEEPSEEK_ADMIN_PASSWORD` in `.env`). The `ds2api` command does not open a browser automatically. If you changed `PORT` in `.env`, use that port instead of `8080`.
+When `ds2api` starts, it prints the WebUI URL and current admin password in the terminal. Keep that output private. Open [http://127.0.0.1:8080/webui/](http://127.0.0.1:8080/webui/) in your browser and sign in with the printed password (`admin` by default). The command does not open a browser automatically. If you changed `PORT` in `.env`, use that port instead of `8080`.
+
+If you need to retrieve a changed password from the installed `.env`:
+
+Windows Command Prompt:
+
+```bat
+findstr /B "DEEPSEEK_ADMIN_PASSWORD=" "%LOCALAPPDATA%\Programs\DS2API\.env"
+```
+
+Windows PowerShell:
+
+```powershell
+Select-String '^DEEPSEEK_ADMIN_PASSWORD=' "$env:LOCALAPPDATA\Programs\DS2API\.env"
+```
+
+macOS / Linux:
+
+```bash
+grep '^DEEPSEEK_ADMIN_PASSWORD=' "${XDG_DATA_HOME:-$HOME/.local/share}/ds2api/.env"
+```
+
+If you installed to a custom `--install-dir`, substitute that location in the command for your operating system.
 
 To uninstall, run the system Python against the installed script (not the app's virtualenv): `py -3 "$env:LOCALAPPDATA\Programs\DS2API\scripts\uninstall.py"` in Windows PowerShell, or `python3 ~/.local/share/ds2api/scripts/uninstall.py` on macOS/Linux. It removes the PATH command and application files while preserving `.env` and `data/`. Add `--purge-user-data` only if you also want to delete stored settings and account credentials. If you chose a custom `--install-dir`, substitute that path.
 

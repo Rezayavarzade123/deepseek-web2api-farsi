@@ -104,7 +104,7 @@ def test_windows_launcher_is_self_contained() -> None:
     assert "setlocal" in launcher
 
 
-def test_cli_validates_overridden_bind_before_starting_server(monkeypatch) -> None:
+def test_cli_validates_overridden_bind_before_starting_server(monkeypatch, capsys) -> None:
     events: list[tuple[str, str, int]] = []
     fake_server = types.ModuleType("server")
     fake_server.HOST = "127.0.0.1"
@@ -120,6 +120,7 @@ def test_cli_validates_overridden_bind_before_starting_server(monkeypatch) -> No
     monkeypatch.setitem(sys.modules, "server", fake_server)
     monkeypatch.setitem(sys.modules, "uvicorn", fake_uvicorn)
     monkeypatch.setattr(sys, "argv", ["ds2api", "--host", "0.0.0.0", "--port", "9000"])
+    monkeypatch.setenv("DEEPSEEK_ADMIN_PASSWORD", "test-admin-password")
 
     previous_directory = Path.cwd()
     try:
@@ -131,6 +132,15 @@ def test_cli_validates_overridden_bind_before_starting_server(monkeypatch) -> No
         ("validate", "0.0.0.0", 9000),
         ("run", "0.0.0.0", 9000),
     ]
+    output = capsys.readouterr().out
+    assert "http://127.0.0.1:9000/webui/" in output
+    assert "WebUI admin password: test-admin-password" in output
+    assert "Use this password to sign in to the WebUI" in output
+
+
+def test_webui_url_formats_wildcard_and_ipv6_hosts() -> None:
+    assert ds2api._webui_url("0.0.0.0", 9000) == "http://127.0.0.1:9000/webui/"
+    assert ds2api._webui_url("::", 9000) == "http://[::1]:9000/webui/"
 
 
 def test_windows_npm_shim_is_invoked_through_cmd_shell(monkeypatch, tmp_path: Path) -> None:

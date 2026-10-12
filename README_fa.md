@@ -83,7 +83,29 @@ ds2api
 
 #### باز کردن WebUI
 
-پس از نمایش پیام شروع سرور توسط `ds2api`، نشانی [http://127.0.0.1:8080/webui/](http://127.0.0.1:8080/webui/) را در مرورگر باز کنید و با گذرواژهٔ پیش‌فرض `admin` وارد شوید؛ مگر اینکه مقدار `DEEPSEEK_ADMIN_PASSWORD` را در `.env` تغییر داده باشید. فرمان `ds2api` مرورگر را خودکار باز نمی‌کند. اگر مقدار `PORT` را در `.env` تغییر داده‌اید، به‌جای `8080` از همان پورت استفاده کنید.
+هنگام اجرای `ds2api`، نشانی WebUI و گذرواژهٔ مدیریتی فعلی در ترمینال نمایش داده می‌شوند؛ خروجی را خصوصی نگه دارید. نشانی [http://127.0.0.1:8080/webui/](http://127.0.0.1:8080/webui/) را در مرورگر باز کنید و با گذرواژهٔ نمایش‌داده‌شده (پیش‌فرض `admin`) وارد شوید. فرمان `ds2api` مرورگر را خودکار باز نمی‌کند. اگر مقدار `PORT` را در `.env` تغییر داده‌اید، به‌جای `8080` از همان پورت استفاده کنید.
+
+برای بازیابی گذرواژهٔ تغییر‌یافته از فایل `.env` نصب‌شده:
+
+Command Prompt ویندوز:
+
+```bat
+findstr /B "DEEPSEEK_ADMIN_PASSWORD=" "%LOCALAPPDATA%\Programs\DS2API\.env"
+```
+
+PowerShell ویندوز:
+
+```powershell
+Select-String '^DEEPSEEK_ADMIN_PASSWORD=' "$env:LOCALAPPDATA\Programs\DS2API\.env"
+```
+
+macOS / Linux:
+
+```bash
+grep '^DEEPSEEK_ADMIN_PASSWORD=' "${XDG_DATA_HOME:-$HOME/.local/share}/ds2api/.env"
+```
+
+اگر هنگام نصب از `--install-dir` سفارشی استفاده کرده‌اید، در فرمان مربوط به سیستم‌عامل خود مسیر نصب را جایگزین کنید.
 
 برای حذف نصب، از Python سیستم (نه Python محیط مجازی برنامه) استفاده کنید: در PowerShell ویندوز `py -3 "$env:LOCALAPPDATA\Programs\DS2API\scripts\uninstall.py"` و در macOS/Linux `python3 ~/.local/share/ds2api/scripts/uninstall.py` را اجرا کنید. فرمان PATH و فایل‌های برنامه حذف می‌شوند، اما `.env` و `data/` باقی می‌مانند. فقط اگر می‌خواهید تنظیم‌ها و اطلاعات حساب هم حذف شوند، `--purge-user-data` را اضافه کنید. اگر هنگام نصب `--install-dir` سفارشی تعیین کرده‌اید، همان مسیر را جایگزین کنید.
 
