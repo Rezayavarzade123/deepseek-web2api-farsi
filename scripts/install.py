@@ -9,7 +9,6 @@ import argparse
 import json
 import os
 import re
-import secrets
 import shlex
 import shutil
 import subprocess
@@ -78,7 +77,7 @@ def create_default_config(install_dir: Path) -> str | None:
     if not example.is_file():
         raise RuntimeError(f"Missing configuration template: {example}")
 
-    password = secrets.token_hex(24)
+    password = "admin"
     contents = example.read_text(encoding="utf-8")
     contents, replacements = re.subn(
         r"(?m)^DEEPSEEK_ADMIN_PASSWORD=.*$",
@@ -87,7 +86,7 @@ def create_default_config(install_dir: Path) -> str | None:
         count=1,
     )
     if replacements != 1:
-        raise RuntimeError("Could not set a generated admin password in .env.example")
+        raise RuntimeError("Could not set the default admin password in .env.example")
 
     env_file.write_text(contents, encoding="utf-8", newline="\n")
     if os.name != "nt":
@@ -453,9 +452,8 @@ def main() -> int:
     copy_application(install_dir)
     password = create_default_config(install_dir)
     if password:
-        print("\nGenerated admin password (shown once; also stored in .env):")
-        print(password)
-        print("Save it somewhere secure before closing this terminal.")
+        print(f"\nDefault admin password (also stored in .env): {password}")
+        print("Change it before exposing DS2API to any network.")
 
     data_dir = install_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)

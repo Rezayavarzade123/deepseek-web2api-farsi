@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 import types
@@ -13,7 +12,7 @@ import pytest
 from scripts import ds2api, install
 
 
-def test_installer_generates_admin_password_once_and_preserves_existing_env(tmp_path: Path) -> None:
+def test_installer_uses_admin_password_by_default_and_preserves_existing_env(tmp_path: Path) -> None:
     (tmp_path / ".env.example").write_text(
         "HOST=127.0.0.1\nDEEPSEEK_ADMIN_PASSWORD=admin\n",
         encoding="utf-8",
@@ -21,9 +20,8 @@ def test_installer_generates_admin_password_once_and_preserves_existing_env(tmp_
 
     password = install.create_default_config(tmp_path)
     env_file = tmp_path / ".env"
-    assert password is not None
-    assert re.fullmatch(r"[0-9a-f]{48}", password)
-    assert f"DEEPSEEK_ADMIN_PASSWORD={password}" in env_file.read_text(encoding="utf-8")
+    assert password == "admin"
+    assert "DEEPSEEK_ADMIN_PASSWORD=admin" in env_file.read_text(encoding="utf-8")
 
     env_file.write_text("CUSTOM_SETTING=keep-me\n", encoding="utf-8")
     assert install.create_default_config(tmp_path) is None

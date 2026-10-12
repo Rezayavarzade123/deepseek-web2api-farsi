@@ -82,13 +82,13 @@ export PATH="$HOME/.local/bin:$PATH"
 ds2api
 ```
 
-The installer creates a virtual environment, installs Python dependencies, builds the WebUI when Node.js 20+ is available, and adds the `ds2api` command to your user PATH. The commands above update the current shell's PATH so `ds2api` can run immediately; future terminals also find it through the installed user PATH. On Windows, `ds2api.cmd` works by name in both Command Prompt and PowerShell. On first install, the installer generates and displays an admin password once; save it securely. It creates `.env` and preserves `.env` and `data/` when rerun to update.
+The installer creates a virtual environment, installs Python dependencies, builds the WebUI when Node.js 20+ is available, and adds the `ds2api` command to your user PATH. The commands above update the current shell's PATH so `ds2api` can run immediately; future terminals also find it through the installed user PATH. On Windows, `ds2api.cmd` works by name in both Command Prompt and PowerShell. A new local installation uses `admin` as the WebUI password for convenience. Change it before exposing DS2API to any network; the server refuses a public bind with this weak default. The installer preserves `.env` and `data/` when rerun to update.
 
 If Node.js is not installed, setup completes in API-only mode. Install Node.js 20+ and rerun the installer to build the WebUI. You can also pass `--skip-webui` to intentionally install API-only.
 
 #### Open the WebUI
 
-After `ds2api` reports that the server has started, open [http://127.0.0.1:8080/webui/](http://127.0.0.1:8080/webui/) in your browser and sign in with the admin password printed by the installer. The `ds2api` command does not open a browser automatically. If you changed `PORT` in `.env`, use that port instead of `8080`.
+After `ds2api` reports that the server has started, open [http://127.0.0.1:8080/webui/](http://127.0.0.1:8080/webui/) in your browser and sign in with the default password `admin` (unless you changed `DEEPSEEK_ADMIN_PASSWORD` in `.env`). The `ds2api` command does not open a browser automatically. If you changed `PORT` in `.env`, use that port instead of `8080`.
 
 For a manual development setup instead, create a virtual environment and install requirements:
 
@@ -102,7 +102,7 @@ On Windows, `start.bat` remains available for launching from a source checkout.
 
 ### 2. Configure the server
 
-The per-user installer creates `.env` and generates a strong admin password. Do not overwrite that file. For a manual source-checkout setup only, create it with:
+The per-user installer creates `.env` with the local-test password `admin`. Change it to a strong, unique password before exposing the admin panel to any network. Do not overwrite the rest of that file. For a manual source-checkout setup only, create it with:
 
 ```bash
 cp .env.example .env
