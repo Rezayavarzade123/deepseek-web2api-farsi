@@ -72,6 +72,7 @@ HOST = os.environ.get("HOST", "127.0.0.1").strip()
 PORT = int(os.environ.get("PORT", "8080"))
 ALLOW_UNAUTHENTICATED_API = os.environ.get("ALLOW_UNAUTHENTICATED_API", "false").strip().lower() in {"1", "true", "yes", "on"}
 ALLOW_INSECURE_PUBLIC_DEFAULTS = os.environ.get("ALLOW_INSECURE_PUBLIC_DEFAULTS", "false").strip().lower() in {"1", "true", "yes", "on"}
+SESSION_CACHE_FALLBACK = os.environ.get("SESSION_CACHE_FALLBACK", "per_caller").strip().lower()
 
 # CORS allow-list. Empty = same-origin only.
 ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
@@ -473,6 +474,16 @@ def _cache_scope(request: Request) -> str:
 
 
 def _cache_key(request: Request, mode: str, conversation_id: str | None) -> str | None:
+    use_caller_fallback = (
+        conversation_id is None
+        and SESSION_CACHE_FALLBACK == "per_caller"
+        and bool(_extract_api_key(request))
+    )
+    if use_caller_fallback:
+        # Compatibility fallback for clients such as Claude Code that resend
+        # full history but omit a stable conversation identifier. Keep it
+        # scoped to an authenticated caller; unauthenticated IPs never share.
+        conversation_id = "fallback:per-caller"
     derived = SessionCache.derive_cache_key(_cache_scope(request), conversation_id)
     return f"{mode}:{derived}" if derived else None
 

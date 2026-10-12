@@ -31,7 +31,7 @@ The private web protocol cannot be live-validated in this environment because it
 - Client API-key authentication (`Authorization: Bearer` or `x-api-key`).
 - A default local web-chat route plus configurable legacy expert/thinking/search hints; their effect on the current private protocol is unverified.
 - DSML prompt-based tool calling with streaming detection. Tool calling is best-effort, not native or guaranteed.
-- Automatic proof-of-work solving, session management, and optional caller-scoped multi-turn session reuse.
+- Automatic proof-of-work solving and caller-scoped multi-turn chat reuse; clients can provide explicit IDs to isolate conversations.
 - Multi-account pool with round-robin selection, health checks, and recovery.
 - Per-key/per-IP rate limiting, usage statistics, and an admin dashboard.
 - Optional Fernet encryption for stored account credentials.
@@ -554,8 +554,8 @@ The proxy provides lightweight multi-turn behavior by reusing an upstream `chat_
 
 - **Anthropic clients**: use the `metadata.user_id` field in the request body as the session stickiness key.
 - **OpenAI clients**: use the custom HTTP header `X-Conversation-Id` or the top-level `user` field as the session key.
-- **Isolation and account binding**: cached sessions are scoped to the caller and bound to the DeepSeek account that created them; an upstream session is never submitted with another account's credentials.
-- **Without an explicit identifier**: sessions are not reused. The proxy never infers a key from the first message, since unrelated users often share the same opener.
+- **Without an explicit identifier**: by default (`SESSION_CACHE_FALLBACK=per_caller`), untagged requests reuse one upstream chat per authenticated API key. This supports clients such as Claude Code that resend history without a stable ID. Separate conversations using the same key will share that chat; use separate API keys for parallel threads, or set `SESSION_CACHE_FALLBACK=none` and provide explicit identifiers.
+- **Caller isolation and account binding**: cache keys include the authenticated caller, and every cached upstream session remains bound to its creating DeepSeek account.
 
 The session cache TTL defaults to 1800 seconds (`SESSION_CACHE_TTL`); a new session starts automatically after expiry. Set `SESSION_CACHE_TTL=0` to fully disable multi-turn behavior.
 
@@ -832,7 +832,7 @@ Some Chrome extensions send an `OPTIONS` preflight request (CORS preflight) befo
 
 ### Q: Does it support multi-turn conversations?
 
-Yes. Provide a stable conversation identifier: `X-Conversation-Id` or OpenAI's `user` field, or Anthropic's `metadata.user_id`. Without one, each request starts a fresh upstream session. Reuse is caller-scoped, account-bound, and expires according to `SESSION_CACHE_TTL`.
+Yes. For separate threads, provide a stable conversation identifier: `X-Conversation-Id`, OpenAI's `user` field, or Anthropic's `metadata.user_id`. Without one, the default `SESSION_CACHE_FALLBACK=per_caller` shares one upstream chat among untagged requests with the same API key. Set it to `none` and provide IDs if you need to isolate parallel threads. Reuse is account-bound and expires according to `SESSION_CACHE_TTL`.
 
 ### Q: How do I view PoW and adapter debug information?
 
@@ -886,7 +886,8 @@ Client API keys are managed in WebUI > Settings, and only hashes are stored in S
 | `ENABLE_RATE_LIMIT` | `true` | client rate-limit master switch |
 | `CLIENT_RPM_PER_KEY` | `60` | requests per minute per API key |
 | `CLIENT_RPM_PER_IP` | `120` | requests per minute per IP |
-| `SESSION_CACHE_TTL` | `1800` | Caller-scoped session-cache lifetime in seconds; `0` disables reuse. |
+| `SESSION_CACHE_TTL` | `1800` | Session-cache lifetime in seconds; `0` disables reuse. |
+| `SESSION_CACHE_FALLBACK` | `per_caller` | Reuse one upstream chat for untagged requests per authenticated caller; set `none` to require explicit IDs. |
 
 ### Security & encryption
 

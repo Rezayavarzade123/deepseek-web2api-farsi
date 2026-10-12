@@ -90,7 +90,7 @@ Do not use these notes as evidence of current live compatibility. Validate chang
 
 - Account credentials are loaded from `ACCOUNT_STORE_PATH` (default `data/accounts.json`) and managed through the WebUI/Admin API. They are not loaded from `.env`.
 - Client API keys are managed in the admin UI and stored as hashes in SQLite. Legacy `API_KEYS` / `DEEPSEEK_API_KEY` settings are imported only during initial key-store creation.
-- Session reuse requires an explicit caller identifier: OpenAI `X-Conversation-Id` or `user`, or Anthropic `metadata.user_id`. No identifier means a fresh upstream session.
+- Explicit caller identifiers isolate conversations: OpenAI `X-Conversation-Id` or `user`, or Anthropic `metadata.user_id`. By default, requests without an ID share one upstream session per authenticated API key (`SESSION_CACHE_FALLBACK=per_caller`) for clients that resend full history; disable this with `SESSION_CACHE_FALLBACK=none` when separate threads must stay isolated.
 - Cache entries are scoped to the API key (hashed) or the caller IP and are bound to the account that created the upstream session. Never submit one account's session ID/parent chain using another account's credentials.
 - `prepare_prompt()` must run before `create_session()`. It returns only the new tail for a continued conversation, invalidates a divergent history, and prevents repeated full-history submission.
 - Successful turns must persist the actual upstream `response_message_id` and the session ID used after any retry. `ready_out` carries these values from the adapter to the session cache.

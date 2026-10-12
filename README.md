@@ -31,7 +31,7 @@ The private web protocol cannot be live-validated in this environment because it
 - Client API-key authentication (`Authorization: Bearer` or `x-api-key`).
 - A default local web-chat route plus configurable legacy expert/thinking/search hints; their effect on the current private protocol is unverified.
 - DSML prompt-based tool calling with streaming detection. Tool calling is best-effort, not native or guaranteed.
-- Automatic proof-of-work challenge solving, session management, and optional caller-scoped multi-turn session reuse.
+- Automatic proof-of-work solving and caller-scoped multi-turn chat reuse; clients can provide explicit IDs to isolate conversations.
 - Multi-account pool with round-robin selection, health checks, and recovery.
 - Per-API-key and per-IP rate limiting, usage estimates, and an admin dashboard.
 - Optional Fernet encryption for stored account credentials.
@@ -208,7 +208,7 @@ Returns the model IDs declared in `MODEL_ROUTES`. If no route table is configure
 
 ### Multi-turn conversations
 
-A conversation is reused only when the caller supplies a stable identifier: `X-Conversation-Id`, OpenAI's top-level `user`, or Anthropic `metadata.user_id`. Cache keys are scoped to the caller, and a cached upstream session remains bound to the account that created it. Without an explicit identifier, each request starts a new upstream session. Set `SESSION_CACHE_TTL=0` to disable reuse.
+A stable identifier (`X-Conversation-Id`, OpenAI's top-level `user`, or Anthropic `metadata.user_id`) keeps separate conversations isolated. By default, requests without an identifier reuse one upstream chat per authenticated API key (`SESSION_CACHE_FALLBACK=per_caller`), which supports clients such as Claude Code that resend history without a conversation ID. Those untagged requests sharing the same key also share one chat, so use separate keys for parallel conversations or set `SESSION_CACHE_FALLBACK=none` and send explicit IDs. Cached sessions remain bound to the account that created them. Set `SESSION_CACHE_TTL=0` to disable reuse.
 
 ## Configuration reference
 
@@ -227,7 +227,8 @@ See `.env.example` for the complete commented template. Frequently used settings
 | `SEARCH` | `auto` | `auto`, `enabled`, or `disabled`. |
 | `ACCOUNT_STORE_PATH` | `data/accounts.json` | Account pool storage file. |
 | `DEEPSEEK_ENCRYPTION_KEY` | unset | Fernet key for encrypting account credentials at rest. |
-| `SESSION_CACHE_TTL` | `1800` | Caller-scoped session cache lifetime in seconds; `0` disables reuse. |
+| `SESSION_CACHE_TTL` | `1800` | Session cache lifetime in seconds; `0` disables reuse. |
+| `SESSION_CACHE_FALLBACK` | `per_caller` | Reuse one chat for untagged requests per authenticated caller; set `none` to require an explicit conversation ID. |
 | `DEEPSEEK_MAX_CONCURRENCY` | `2` | Maximum simultaneous upstream requests across all accounts. |
 | `CLIENT_RPM_PER_KEY` | `60` | Client requests per minute per API key; `0` disables this dimension. |
 | `CLIENT_RPM_PER_IP` | `120` | Client requests per minute per IP; `0` disables this dimension. |
