@@ -26,6 +26,7 @@ function render(state) {
   copyTokenButton.disabled = !captured?.token
   copyCookieButton.disabled = !captured?.cookies
   clearButton.disabled = !captured && !currentState.armed
+  clearButton.textContent = currentState.armed ? 'Cancel capture' : 'Clear captured credentials'
   armButton.disabled = Boolean(currentState.armed)
   armButton.textContent = currentState.armed ? 'Capture is armed' : 'Arm one-shot capture'
 
@@ -85,10 +86,13 @@ copyCookieButton.addEventListener('click', async () => {
 })
 
 clearButton.addEventListener('click', async () => {
+  const wasArmed = currentState.armed
   feedback.textContent = ''
   try {
     render(await send('CLEAR_CAPTURE'))
-    feedback.textContent = 'Captured credentials cleared from the extension session.'
+    feedback.textContent = wasArmed
+      ? 'Capture canceled.'
+      : 'Captured credentials cleared from the extension session.'
   } catch {
     feedback.textContent = 'Could not clear capture data. Please reopen the popup.'
   }

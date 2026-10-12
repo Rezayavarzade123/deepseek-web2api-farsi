@@ -19,7 +19,7 @@ This optional Chromium extension makes adding **your own signed-in DeepSeek acco
 5. Open the extension popup and select **Arm one-shot capture**.
 6. Within two minutes, send a message in the DeepSeek chat tab. The helper captures the first matching API POST that contains both headers.
 7. Reopen the popup. Select **Copy token** and **Copy Cookie header**, then paste them into the matching fields in **DS2API → Account Pool → Add account**.
-8. Press **Clear captured credentials** when finished. This does not clear your operating system's clipboard; replace or clear copied values there as needed.
+8. Press **Clear captured credentials** when finished. If you armed it by mistake, use **Cancel capture**. Clearing the helper does not clear your operating system's clipboard; replace or clear copied values there as needed.
 
 The extension captures request headers, not browser storage, and cannot recover credentials from requests that happened before you armed it. If the current DeepSeek web app changes its request format, use the Network-panel instructions in the project README instead. This helper does not establish that the private upstream protocol is currently compatible.
 
