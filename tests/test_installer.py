@@ -40,6 +40,24 @@ def test_installer_refuses_to_merge_an_unmarked_nonempty_directory(tmp_path: Pat
     assert (install_dir / "keep.txt").read_text(encoding="utf-8") == "user file"
 
 
+def test_generated_password_is_printed_before_dependency_install_can_fail(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["install.py", "--install-dir", str(tmp_path / "app"), "--skip-webui"])
+    monkeypatch.setattr(install, "copy_application", lambda install_dir: None)
+    monkeypatch.setattr(install, "create_default_config", lambda install_dir: "one-time-password")
+    monkeypatch.setattr(install, "ensure_virtualenv", lambda install_dir: tmp_path / "python.exe")
+
+    def fail_dependencies(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, "pip install")
+
+    monkeypatch.setattr(install.subprocess, "run", fail_dependencies)
+    with pytest.raises(subprocess.CalledProcessError):
+        install.main()
+
+    assert capsys.readouterr().out.count("one-time-password") == 1
+
+
 def test_posix_path_block_is_idempotent_and_removable(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     home.mkdir()
@@ -114,6 +132,27 @@ def test_cli_validates_overridden_bind_before_starting_server(monkeypatch) -> No
     assert events == [
         ("validate", "0.0.0.0", 9000),
         ("run", "0.0.0.0", 9000),
+    ]
+
+
+def test_windows_npm_shim_is_invoked_through_cmd_shell(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+    monkeypatch.setattr(install, "os", types.SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        install.subprocess,
+        "run",
+        lambda command, **kwargs: calls.append((command, kwargs)),
+    )
+
+    npm_path = r"C:\Program Files\nodejs\npm.CMD"
+    arguments = ["ci", "--no-audit", "--no-fund"]
+    install.npm_command(npm_path, arguments, tmp_path)
+
+    assert calls == [
+        (
+            install.subprocess.list2cmdline([npm_path, *arguments]),
+            {"cwd": tmp_path, "check": True, "shell": True},
+        )
     ]
 
 

@@ -105,9 +105,9 @@ def ensure_virtualenv(install_dir: Path) -> Path:
 
 def npm_command(npm_path: str, arguments: list[str], cwd: Path) -> None:
     if os.name == "nt":
+        # npm is a .cmd shim on Windows; let Python invoke it through cmd.exe.
         command_line = subprocess.list2cmdline([npm_path, *arguments])
-        command = os.environ.get("COMSPEC", "cmd.exe")
-        subprocess.run([command, "/d", "/s", "/c", command_line], cwd=cwd, check=True)
+        subprocess.run(command_line, cwd=cwd, check=True, shell=True)
     else:
         subprocess.run([npm_path, *arguments], cwd=cwd, check=True)
 
@@ -452,6 +452,10 @@ def main() -> int:
 
     copy_application(install_dir)
     password = create_default_config(install_dir)
+    if password:
+        print("\nGenerated admin password (shown once; also stored in .env):")
+        print(password)
+        print("Save it somewhere secure before closing this terminal.")
 
     data_dir = install_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -480,11 +484,7 @@ def main() -> int:
     else:
         print("WebUI was not built. Install Node.js 20+ and rerun the installer, or use --skip-webui for API-only setup.")
     print(f"Configuration: {install_dir / '.env'}")
-    if password:
-        print("\nGenerated admin password (shown once; also stored in .env):")
-        print(password)
-        print("Save it somewhere secure before closing this terminal.")
-    else:
+    if not password:
         print("Existing .env and account data were preserved.")
     print("Rerun this installer to update application files; .env and data/ are preserved.")
     return 0
