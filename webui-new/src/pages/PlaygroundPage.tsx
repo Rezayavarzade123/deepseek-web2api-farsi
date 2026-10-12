@@ -29,6 +29,13 @@ interface ApiMessage {
   content: string
 }
 
+function createConversationId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `playground-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 export default function PlaygroundPage() {
   const { t } = useLanguage()
   const token = useAuthStore((s) => s.token)
@@ -44,6 +51,7 @@ export default function PlaygroundPage() {
 
   const [input, setInput] = useState('')
   const [history, setHistory] = useState<ChatMessage[]>([])
+  const [conversationId, setConversationId] = useState(createConversationId)
   const [streaming, setStreaming] = useState<StreamingState | null>(null)
   const [busy, setBusy] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
@@ -80,6 +88,7 @@ export default function PlaygroundPage() {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'X-Conversation-Id': conversationId,
         },
         body: JSON.stringify({
           model,
@@ -182,6 +191,7 @@ export default function PlaygroundPage() {
 
   const handleClear = () => {
     setHistory([])
+    setConversationId(createConversationId())
     setStreaming(null)
     setClearOpen(false)
   }
