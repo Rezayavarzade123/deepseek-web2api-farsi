@@ -21,6 +21,7 @@ import { useAuthStore } from '@/stores/auth'
 import { ApiCallError } from '@/lib/api'
 import { ModelSelector } from '@/components/playground/ModelSelector'
 import { MessageList, type ChatMessage, type StreamingState } from '@/components/playground/MessageList'
+import { useLanguage } from '@/lib/i18n'
 
 /** Messages sent to the backend (OpenAI-compatible subset we support). */
 interface ApiMessage {
@@ -28,23 +29,21 @@ interface ApiMessage {
   content: string
 }
 
-/** Display labels for the model dropdown — mark the quick/expert modes. */
-const MODEL_LABELS: Record<string, string> = {
-  'deepseek-chat': 'deepseek-chat（快速 / 默认）',
-  'deepseek-reasoner': 'deepseek-reasoner（专家）',
+function createConversationId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `playground-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 export default function PlaygroundPage() {
+  const { t } = useLanguage()
   const token = useAuthStore((s) => s.token)
   const { toast } = useToast()
+  const modelLabels = { 'deepseek-flash': t('playground.flashAlias') }
 
-  // Request parameters — these map to the fields the backend actually
-  // forwards to DeepSeek (see server.py / adapter.py):
-  //   model          -> MODEL_ROUTES may map it to model_type (default/expert)
-  //   thinking_mode  -> DeepSeek thinking_enabled
-  //   search_enabled -> DeepSeek search_enabled
-  // temperature / top_p / max_tokens are ignored by the backend, so they
-  // are intentionally not offered here.
+  // These controls send private web-chat hints; their current upstream behavior is unverified.
+  // The response model name is a local proxy alias, not proof of upstream model selection.
   const [model, setModel] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [thinking, setThinking] = useState(false)
@@ -52,6 +51,7 @@ export default function PlaygroundPage() {
 
   const [input, setInput] = useState('')
   const [history, setHistory] = useState<ChatMessage[]>([])
+  const [conversationId, setConversationId] = useState(createConversationId)
   const [streaming, setStreaming] = useState<StreamingState | null>(null)
   const [busy, setBusy] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
@@ -88,6 +88,7 @@ export default function PlaygroundPage() {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          'X-Conversation-Id': conversationId,
         },
         body: JSON.stringify({
           model,
@@ -175,7 +176,7 @@ export default function PlaygroundPage() {
         }
       } else {
         const msg = e instanceof ApiCallError ? e.message : String(e)
-        toast({ title: '请求失败', description: msg, variant: 'destructive' })
+        toast({ title: t('playground.requestFailed'), description: msg, variant: 'destructive' })
       }
       setStreaming(null)
     } finally {
@@ -190,6 +191,7 @@ export default function PlaygroundPage() {
 
   const handleClear = () => {
     setHistory([])
+    setConversationId(createConversationId())
     setStreaming(null)
     setClearOpen(false)
   }
@@ -197,8 +199,8 @@ export default function PlaygroundPage() {
   return (
     <div className="space-y-4 animate-fade-in h-full flex flex-col">
       <PageHeader
-        title="Playground"
-        description="在线测试 /v1/chat/completions"
+        title={t('playground.title')}
+        description={t('playground.description')}
         actions={
           <Button
             variant="outline"
@@ -206,7 +208,7 @@ export default function PlaygroundPage() {
             disabled={history.length === 0 || busy}
           >
             <Trash2 className="h-4 w-4" />
-            清空
+            {t('playground.clear')}
           </Button>
         }
       />
@@ -217,26 +219,26 @@ export default function PlaygroundPage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <FlaskConical className="h-4 w-4" />
-              参数
+              {t('playground.parameters')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
-              <Label>模型</Label>
-              <ModelSelector value={model} onChange={setModel} labels={MODEL_LABELS} />
+              <Label>{t('playground.model')}</Label>
+              <ModelSelector value={model} onChange={setModel} labels={modelLabels} />
               <p className="text-[11px] text-muted-foreground">
-                经 <code className="font-mono">MODEL_ROUTES</code> 映射 DeepSeek
-                <code className="font-mono"> model_type</code>（default / expert）
+                {t('playground.modelNote')}
               </p>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="system">System 提示</Label>
+              <Label htmlFor="system">{t('playground.systemPrompt')}</Label>
               <textarea
                 id="system"
                 value={systemPrompt}
+              dir="auto"
                 onChange={(e) => setSystemPrompt(e.target.value)}
-                placeholder="可选，例如 'You are a helpful assistant.'"
+                placeholder={t('playground.systemPlaceholder')}
                 className="flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 rows={3}
               />
@@ -244,9 +246,9 @@ export default function PlaygroundPage() {
 
             <div className="flex items-center justify-between">
               <div>
-                <Label htmlFor="thinking">思考模式</Label>
+                <Label htmlFor="thinking">{t('playground.thinking')}</Label>
                 <p className="text-[11px] text-muted-foreground">
-                  对应 DeepSeek <code className="font-mono">thinking_enabled</code>
+                  {t('playground.thinkingNote')}
                 </p>
               </div>
               <Switch id="thinking" checked={thinking} onCheckedChange={setThinking} />
@@ -254,9 +256,9 @@ export default function PlaygroundPage() {
 
             <div className="flex items-center justify-between">
               <div>
-                <Label htmlFor="search">联网搜索</Label>
+                <Label htmlFor="search">{t('playground.search')}</Label>
                 <p className="text-[11px] text-muted-foreground">
-                  对应 DeepSeek <code className="font-mono">search_enabled</code>
+                  {t('playground.searchNote')}
                 </p>
               </div>
               <Switch id="search" checked={search} onCheckedChange={setSearch} />
@@ -265,12 +267,12 @@ export default function PlaygroundPage() {
             <div className="rounded-md border border-dashed p-3 text-[11px] leading-relaxed text-muted-foreground space-y-1">
               <p className="flex items-center gap-1 font-medium text-foreground/80">
                 <Info className="h-3.5 w-3.5" />
-                参数生效规则
+                {t('playground.rules')}
               </p>
-              <p>· 服务端 .env 的 MODE / THINKING / SEARCH 优先级高于此处设置</p>
-              <p>· MODE=expert 时始终走专家模式（model_type=expert）</p>
-              <p>· THINKING/SEARCH 为 enabled/disabled 时强制开关</p>
-              <p>· temperature / top_p / max_tokens 后端暂不生效，未提供</p>
+              <p>· {t('playground.envPriority')}</p>
+              <p>· {t('playground.legacyExpert')}</p>
+              <p>· {t('playground.forceFlags')}</p>
+              <p>· {t('playground.ignoredParams')}</p>
             </div>
           </CardContent>
         </Card>
@@ -283,6 +285,7 @@ export default function PlaygroundPage() {
           <div className="border-t p-3 flex items-end gap-2">
             <Input
               value={input}
+              dir="auto"
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -290,23 +293,23 @@ export default function PlaygroundPage() {
                   handleSend()
                 }
               }}
-              placeholder="输入消息，回车发送，Shift+回车换行…"
+              placeholder={t('playground.inputPlaceholder')}
               disabled={busy || !model}
               className="flex-1"
             />
             {busy ? (
-              <Button variant="destructive" onClick={handleStop} aria-label="停止">
+              <Button variant="destructive" onClick={handleStop} aria-label={t('playground.stop')}>
                 <Square className="h-4 w-4" />
               </Button>
             ) : (
               <Button onClick={handleSend} disabled={!input.trim() || !model}>
                 <Send className="h-4 w-4" />
-                发送
+                {t('playground.send')}
               </Button>
             )}
           </div>
           <div className="border-t px-3 py-1.5 text-[11px] text-muted-foreground">
-            Enter 发送 · Shift+Enter 换行 · 模型与参数见左侧
+            {t('playground.keyboardHelp')}
           </div>
         </Card>
       </div>
@@ -315,13 +318,13 @@ export default function PlaygroundPage() {
       <AlertDialog open={clearOpen} onOpenChange={setClearOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>清空所有对话？</AlertDialogTitle>
-            <AlertDialogDescription>此操作将删除当前会话中的所有消息，不可恢复。</AlertDialogDescription>
+            <AlertDialogTitle>{t('playground.clearTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('playground.clearDescription')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleClear} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              确认清空
+              {t('playground.clearConfirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

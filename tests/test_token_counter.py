@@ -20,7 +20,8 @@ def test_count_text_ascii():
 
 
 def test_count_text_cjk_close_to_char_count():
-    n = count_text("你好世界")
+    cjk_text = "\u4f60\u597d\u4e16\u754c"
+    n = count_text(cjk_text)
     # tiktoken cl100k_base merges 4 CJK chars into ~4-6 tokens; the
     # fallback heuristic gives 4. Either way, the count should be in
     # the [3, 8] range.
@@ -28,17 +29,17 @@ def test_count_text_cjk_close_to_char_count():
 
 
 def test_count_text_mixed():
-    n = count_text("Hello 你好")
+    n = count_text("Hello \u4f60\u597d")
     assert n > 0
 
 
 def test_count_text_does_not_crash_on_unicode():
-    n = count_text("🎉🎊 中文 hello")
+    n = count_text("🎉🎊 \u4e2d\u6587 hello")
     assert n >= 1
 
 
 def test_is_cjk_classifier():
-    assert _is_cjk("中") is True
+    assert _is_cjk("\u4e2d") is True
     assert _is_cjk("A") is False
     assert _is_cjk(" ") is False
 

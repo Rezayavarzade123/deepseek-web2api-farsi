@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DeepSeek credential capture</title>
+    <link rel="stylesheet" href="popup.css">
+    <script src="popup.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <h1>DS2API credential helper</h1>
+      <p class="privacy">One-shot, local-only capture. This helper watches a DeepSeek chat API request only after you arm it. It does not upload or log credentials.</p>
+
+      <section class="status-card" aria-live="polite">
+        <strong id="state-title">Checking status…</strong>
+        <p id="state-detail"></p>
+      </section>
+
+      <button id="arm" class="primary" type="button">Arm one-shot capture</button>
+      <div class="copy-actions">
+        <button id="copy-token" type="button" disabled>Copy token</button>
+        <button id="copy-cookie" type="button" disabled>Copy Cookie header</button>
+      </div>
+      <button id="clear" class="quiet" type="button" disabled>Clear captured credentials</button>
+      <p id="feedback" role="status" aria-live="polite"></p>
+      <p class="footnote">After capture, paste the token and Cookie header into your local DS2API Account Pool. Clearing this helper does not clear your system clipboard.</p>
+    </main>
+  </body>
+</html>

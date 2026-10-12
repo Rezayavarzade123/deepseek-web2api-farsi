@@ -8,11 +8,8 @@
         "baseURL": "http://127.0.0.1:8080/v1"
       },
       "models": {
-        "deepseek-chat": {
-          "name": "DeepSeek Chat (web proxy)"
-        },
-        "deepseek-reasoner": {
-          "name": "DeepSeek Reasoner (web proxy)"
+        "deepseek-flash": {
+          "name": "DeepSeek Flash (local text-only proxy route)"
         }
       }
     }

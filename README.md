@@ -1,884 +1,316 @@
-# DeepSeek Chat API Proxy
+# DeepSeek Web Chat API Proxy
 
-> 将 DeepSeek Chat (chat.deepseek.com) 的私有 API 转换为 OpenAI / Anthropic 兼容格式。
+[English](README_en.md) · [فارسی](README_fa.md)
 
-> **🤖 全 AI 生成声明**: 本项目没有一行人工手写代码。所有的 API 端点设计、协议逆向、PoW 求解、SSE 解析、格式映射、文档编写等等全部由 **DeepSeek v4 Flash 模型** + **Claude Code** 协作完成。
+> An unofficial proxy that adapts the private `chat.deepseek.com` web-chat protocol to OpenAI-compatible and Anthropic-compatible endpoints.
 
-**免责声明**: 本项目仅限学习研究使用。非官方项目，与 DeepSeek 无关。使用需自行承担风险，不保证稳定性。
+**Important:** This project talks to DeepSeek's web application, not the official `api.deepseek.com` API. It uses a signed-in web account's token and cookies and solves the web client's proof-of-work challenge. The private protocol can change without notice. This project is not affiliated with DeepSeek; use it at your own risk and in compliance with DeepSeek's terms.
 
----
+For expanded installation guidance, API details, FAQs, and the full configuration reference, see the [full English guide](README_en.md).
 
-## 功能特性
+## DeepSeek model compatibility
 
-- **OpenAI 兼容** — `/v1/chat/completions` 与 `/v1/models` 接口，支持 `stream` 模式
-- **Anthropic 兼容** — `/v1/messages` 接口，支持 Claude API 格式
-- **API Key 鉴权** — `/v1/*` 支持 `Authorization: Bearer` / `x-api-key`，适合公网部署
-- **思维链（Reasoning/Thinking）** — 专家模式下自动分离思维链 tokens 并通过 `reasoning_content` 字段输出
-- **专家模式（Expert Mode）** — 开启 R1 风格深度推理，响应含 THINK→RESPONSE 双阶段
-- **Quick 模式** — V3 风格快速回答，低延迟
-- **联网搜索** — 通过 `search_enabled` 参数启用实时搜索增强
-- **Function Calling** — 基于 DSML（DeepSeek Markup Language）提示词注入实现工具调用
-- **流式筛分** — `StreamSieve` 引擎，逐字符检测 DSML 工具调用标签，从 SSE 流中实时分离正文与工具调用
-- **PoW 鉴权** — 自动完成 WASM 工作量证明（DeepSeekHashV1）挑战
-- **会话管理** — 自动创建和管理 DeepSeek Chat 会话；可选多轮会话复用
-- **多账号池** — 轮询分配、idle/busy/error 状态、健康检查、自动恢复
-- **客户端限流** — 滑动窗口，按 API key 和 IP 独立计数；响应头 `X-RateLimit-*`
-- **使用量统计** — 基于 tiktoken 估算的 prompt / completion / total tokens
-- **管理面板** — 内置 Web 管理界面，支持请求统计、账号池管理（多账号轮询/持久化增删改查/重登录）
+As of **October 11, 2026**, DeepSeek's official API lists `deepseek-flash` as V4.1-Flash with native vision support, and `deepseek-v4-pro` as V4-Pro-0813, which is text-only. The current [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/) page lists both; the [updated change log](https://api-docs.deepseek.com/updates/) says Pro API service continues after September 14, 2026, with billing unchanged. The legacy API IDs `deepseek-chat` and `deepseek-reasoner` were announced for retirement on July 24, 2026.
 
----
+DeepSeek V4.1-Flash combines visual understanding with strong reasoning capabilities. The web app's quick, expert, and vision experience has been reported as unified into an adaptive mode ([AIbase report](https://www.aibase.com/news/30949)); that product behavior is not a verified contract for this private web protocol.
 
-## 快速开始
+The proxy exposes one default **local route alias**:
 
-### 前置条件
+| Client model ID | Local route | Meaning inside this proxy |
+|---|---|---|
+| `deepseek-flash` | `default` | Default private web-chat route hint for the unified Flash experience |
 
-- Python 3.10+
-- 可以访问 `chat.deepseek.com` 的网络环境
-- 有效的 DeepSeek 账号（免费注册）
+`deepseek-flash` is not sent to `api.deepseek.com`, and the proxy cannot guarantee which upstream model or mode the web app selects. Although V4.1-Flash supports vision, this proxy currently forwards text only; image upload/content conversion is not implemented. OpenAI non-text parts and Anthropic image blocks are rejected with HTTP 400 rather than silently dropped. Use DeepSeek's official API directly for image input or official API features.
 
-### 安装
+The private web protocol cannot be live-validated in this environment because it requires a real account and access to DeepSeek. Offline tests verify local routing and compatibility behavior only.
+
+## Features
+
+- OpenAI-compatible `POST /v1/chat/completions` and `GET /v1/models`, including streaming.
+- Anthropic-compatible `POST /v1/messages`, including streaming and tool-use blocks.
+- Client API-key authentication (`Authorization: Bearer` or `x-api-key`).
+- A default local web-chat route plus configurable legacy expert/thinking/search hints; their effect on the current private protocol is unverified.
+- DSML prompt-based tool calling with streaming detection. Tool calling is best-effort, not native or guaranteed.
+- Automatic proof-of-work solving and caller-scoped multi-turn chat reuse; clients can provide explicit IDs to isolate conversations.
+- Multi-account pool with round-robin selection, health checks, and recovery.
+- Per-API-key and per-IP rate limiting, usage estimates, and an admin dashboard.
+- Optional Fernet encryption for stored account credentials.
+- English and Persian (Farsi) WebUI language selector; Persian uses a right-to-left layout.
+- Optional one-shot Chromium helper to copy your own DeepSeek chat token and Cookie header locally; see [the helper guide](tools/chromium-credential-capture/README.md).
+- Per-user installer that adds the `ds2api` command to PATH without administrator rights.
+
+## Requirements
+
+- Python 3.10 or newer.
+- Network access to `chat.deepseek.com` and the DeepSeek signature endpoints used by the adapter.
+- A valid DeepSeek web-chat account with a current token and cookies.
+- Node.js 20+ and npm to build the WebUI when its build output is missing. `start.bat` auto-builds when Node/npm is installed. API-only use can run without Node.js.
+
+## Quick start
+
+### 1. Install
+
+Recommended per-user installer (no administrator rights required).
+
+#### Windows PowerShell
+
+```powershell
+git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
+Set-Location .\deepseek-web2api-free-test
+py -3 .\scripts\install.py
+$env:Path = "$env:LOCALAPPDATA\Programs\DS2API\bin;$env:Path"
+ds2api
+```
+
+#### Windows Command Prompt
+
+```bat
+git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
+cd /d deepseek-web2api-free-test
+py -3 scripts\install.py
+set "PATH=%LOCALAPPDATA%\Programs\DS2API\bin;%PATH%"
+ds2api
+```
+
+#### macOS / Linux
 
 ```bash
-# 1. 克隆/下载本项目
-git clone https://github.com/snake-aabb-wtf/deepseek-web2api-free.git
-cd deepseek-web2api-free
+git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
+cd deepseek-web2api-free-test
+python3 scripts/install.py
+export PATH="$HOME/.local/bin:$PATH"
+ds2api
+```
 
-# 2. 安装依赖（Windows 推荐直接用 start.bat 自动创建虚拟环境并安装；手动方式：）
+The installer creates a virtual environment, installs Python dependencies, builds the WebUI when Node.js 20+ is available, and adds the `ds2api` command to your user PATH. The commands above update the current shell's PATH so `ds2api` can run immediately; future terminals also find it through the installed user PATH. On Windows, `ds2api.cmd` works by name in both Command Prompt and PowerShell. A new local installation uses `admin` as the WebUI password for convenience. Change it before exposing DS2API to any network; the server refuses a public bind with this weak default. The installer preserves `.env` and `data/` when rerun to update.
+
+If Node.js is not installed, setup completes in API-only mode. Install Node.js 20+ and rerun the installer to build the WebUI. You can also pass `--skip-webui` to intentionally install API-only.
+
+#### Open the WebUI
+
+When `ds2api` starts, it prints the WebUI URL and current admin password in the terminal. Keep that output private. Open [http://127.0.0.1:8080/webui/](http://127.0.0.1:8080/webui/) in your browser and sign in with the printed password (`admin` by default). The command does not open a browser automatically. If you changed `PORT` in `.env`, use that port instead of `8080`.
+
+If you need to retrieve a changed password from the installed `.env`:
+
+Windows Command Prompt:
+
+```bat
+findstr /B "DEEPSEEK_ADMIN_PASSWORD=" "%LOCALAPPDATA%\Programs\DS2API\.env"
+```
+
+Windows PowerShell:
+
+```powershell
+Select-String '^DEEPSEEK_ADMIN_PASSWORD=' "$env:LOCALAPPDATA\Programs\DS2API\.env"
+```
+
+macOS / Linux:
+
+```bash
+grep '^DEEPSEEK_ADMIN_PASSWORD=' "${XDG_DATA_HOME:-$HOME/.local/share}/ds2api/.env"
+```
+
+If you installed to a custom `--install-dir`, substitute that location in the command for your operating system.
+
+For a manual development setup instead, create a virtual environment and install requirements:
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 获取凭证
+On Windows, `start.bat` remains available for launching from a source checkout.
 
-你需要从浏览器开发者工具中提取你的 DeepSeek 凭证：
+### 2. Configure the server
 
-1. 用浏览器打开 [chat.deepseek.com](https://chat.deepseek.com) 并登录
-2. 按 `F12` 打开开发者工具，切换到 **Network（网络）** 标签
-3. 在页面中随便发一条消息
-4. 在网络请求列表中点击任意一个请求（如 `chat/completion`）
-5. 在请求头中找到以下两个值：
-
-| 凭证 | 位置 | 示例 |
-|------|------|------|
-| Token | `Authorization` 请求头 `Bearer` 后的值 | 从请求头复制 |
-| Cookies | `Cookie` 请求头的完整值 | 从请求头复制 |
-
-> 将凭证添加到 WebUI「账号池」，或写入 `data/accounts.json`。账号凭证不再从 `.env` 读取。
-
-### 配置
+The per-user installer creates `.env` with the local-test password `admin`. Change it to a strong, unique password before exposing the admin panel to any network. Do not overwrite the rest of that file. For a manual source-checkout setup only, create it with:
 
 ```bash
-# 复制环境变量模板
 cp .env.example .env
 ```
 
-编辑 `.env` 文件：
+Set a strong, unique `DEEPSEEK_ADMIN_PASSWORD` before exposing the admin panel. The server refuses a public bind with a weak/default password unless the unsafe override is explicitly enabled. Keep `HOST=127.0.0.1` for local use or behind a reverse proxy.
+
+The default model routes are:
 
 ```ini
-# 客户端 API Key 在 WebUI「设置」页创建和撤销
-# 完整 Key 仅在创建时显示；服务端仅保存哈希
-ALLOW_UNAUTHENTICATED_API=false
-
-# 必填：WebUI 管理面板密码（未设置默认 admin，公网部署前必须修改）
-DEEPSEEK_ADMIN_PASSWORD=change-me
-
-# DeepSeek 账号只通过 WebUI「账号池」或 data/accounts.json 配置。
-
-# 可选：模型路由（默认已启用——Playground 显示快速/专家两种模式）
-MODEL_ROUTES={"deepseek-chat":"default","deepseek-reasoner":"expert"}
-
-# 可选：API 中暴露的模型名称（不影响实际使用的模型）
-MODEL_NAME=deepseek-chat
-
-# 可选：监听地址/端口（默认 127.0.0.1:8080）
-HOST=127.0.0.1
-PORT=8080
-
-# 可选：模式控制（auto=尊重客户端 / quick / expert）
-MODE=auto
-THINKING=auto
-SEARCH=auto
+MODEL_NAME=deepseek-flash
+MODEL_ROUTES={"deepseek-flash":"default"}
 ```
 
-完整变量说明见 `.env.example` 与 [AGENTS.md](AGENTS.md)。
+`MODEL_NAME` is the fallback model ID when a client omits `model`. `MODEL_ROUTES` maps client-provided IDs to private web-chat mode hints; it does not forward an official API model ID. The router retains an optional legacy `expert` hint, but that is not the official `deepseek-v4-pro` API model and may not select a separate upstream mode.
 
-### 启动
+If running API-only without a built WebUI, the legacy `API_KEYS` or `DEEPSEEK_API_KEY` settings can seed client authentication when the SQLite key store is first created. The values are imported once; remove them from `.env` afterward. The recommended ongoing workflow is to manage keys in WebUI > Settings.
+
+### 3. Add a DeepSeek web account
+
+1. Sign in at [chat.deepseek.com](https://chat.deepseek.com).
+2. Open browser Developer Tools, select **Network**, and send a message.
+3. Inspect a chat completion request and copy its bearer token and complete cookie header.
+4. Add the credentials in **WebUI → Account Pool**, or write them to `data/accounts.json`.
+
+For Chrome, Edge, or Brave, the optional [one-shot credential helper](tools/chromium-credential-capture/README.md) can capture the next matching request after you explicitly arm it. It copies values only when you press a copy button; it does not upload them.
+
+Account tokens and cookies are secrets. Do not commit them or put them in a publicly readable file. Account credentials are not loaded from `.env`.
+
+### 4. Start the service and create a client key
+
+After using the installer, open a new terminal and run `ds2api`; the command is on your user PATH. For a manual source-checkout setup, start the server with:
 
 ```bash
-# 推荐：使用启动脚本 start.bat（Windows）
-#   - 自动定位 Python 3.10+，检测/创建虚拟环境（.venv / venv / env）
-#   - 校验依赖，不足则自动安装
-#   - WebUI 产物缺失时自动 npm 构建（set WEBUI_REBUILD=1 强制重建）
-#   - 只结束本项目的旧进程，绝不误杀占用端口的其他服务
-#   - 启动前打印访问地址，默认 3 秒后自动打开浏览器（set WEBUI_OPEN=0 跳过）
-start.bat
-
-# 手动启动（已在虚拟环境中）：
-#   .venv\Scripts\python -m uvicorn server:app --host 127.0.0.1 --port 8080
-```
-
-启动后终端会显示访问地址并自动打开浏览器；日志示例：
-```
-INFO:     Started server process [12345]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
-```
-
-### 验证
-
-```bash
-curl http://localhost:8080/health
-# → {"status":"ok"}
-
-curl http://localhost:8080/v1/models \
-  -H "Authorization: Bearer sk-your-api-key"
-# → {"object":"list","data":[
-#      {"id":"deepseek-chat",...},
-#      {"id":"deepseek-reasoner",...}   # v3.2.0 起 MODEL_ROUTES 默认启用快速/专家两档
-#   ]}
-```
-
-### 管理面板
-
-项目内置 Web 管理界面（v3.0.0 起为 React SPA），提供请求统计和账号池管理功能：
-
-```
-浏览器打开 http://localhost:8080/webui/
-```
-
-> start.bat 会自动构建 WebUI（源码在 `webui-new/`，产物 `webui-new/dist/`）；若手动部署，需先在 `webui-new/` 执行 `npm install && npm run build`。
-
-默认密码为 `.env` 中设置的 `DEEPSEEK_ADMIN_PASSWORD`（未设置则为 `admin`）。公网部署前请务必修改默认密码。
-
-账号只从 `data/accounts.json` 加载。WebUI 账号池中的增删改操作会写入该文件；也可以直接维护该 JSON 文件。
-
-WebUI 其他功能包括：
-
-- **概览** — 实时请求统计（总量/成功/失败/延迟/运行时长）+ 账号池状态一览
-- **Playground** — 在线测试对话（快速/专家两种模型模式，支持推理过程可视化）
-- **设置** — 只读查看当前生效的运行时配置
-
----
-
-## 非交互式账号池配置（代理 / 自动化工具）
-
-> **给 SDK、脚本、curl、CI、代理用**，不经过 WebUI 面板。账号凭证统一存储在 `data/accounts.json`；`.env` 不读取账号凭证。非交互场景直接维护该文件即可。
-
-**`data/accounts.json`（v1 明文）完整格式：**
-
-```json
-{
-  "version": 1,
-  "accounts": [
-    {"email": "acc-001", "token": "<token>", "cookies": "<cookies>"},
-    {"email": "acc-002", "token": "<token>", "cookies": "<cookies>"}
-  ]
-}
-```
-
-- 必填 `token` + `cookies`；可选 `email`/`id`/`created_at`/`updated_at`
-- 文件 `chmod 600`、目录 `chmod 700`（含明文 DeepSeek 凭证，泄露=账号被滥用）
-- 服务启动时一次性全量加载；改文件后需重启进程
-- **加密**：设 `DEEPSEEK_ENCRYPTION_KEY`(Fernet) 后首次启动自动把明文迁移为 v2 加密，并留 `accounts.json.v1.bak`；此时勿再手写明文
-
-**非交互配置步骤：**
-
-```bash
-# 1. 写账号池文件（可脚本生成）
-cat > project_dir/data/accounts.json <<'JSON'
-{"version":1,"accounts":[{"email":"acc-001","token":"<token>","cookies":"<cookies>"}]}
-JSON
-chmod 600 project_dir/data/accounts.json && chmod 700 project_dir/data
-
-# 2. 配 API 鉴权（非交互必需，否则 /v1/* → 503）
-#    首次启动后登录 WebUI，在「设置」页创建 API Key
-
-# 3. 启动
+# macOS / Linux / Windows (inside the virtual environment)
 python -m uvicorn server:app --host 127.0.0.1 --port 8080
 ```
 
-- **改存储路径**：`ACCOUNT_STORE_PATH` 环境变量。
+To uninstall, use the system Python (not the app's virtualenv): in Windows PowerShell run `py -3 "$env:LOCALAPPDATA\Programs\DS2API\scripts\uninstall.py"`; on macOS/Linux run `python3 ~/.local/share/ds2api/scripts/uninstall.py`. This removes the PATH entry and app files but preserves `.env` and `data/`; add `--purge-user-data` only if you also want those deleted. If you chose a custom `--install-dir`, substitute that path.
 
----
+Open `http://127.0.0.1:8080/webui/`, sign in with `DEEPSEEK_ADMIN_PASSWORD`, and create a client API key on the **Settings** page. The full key is displayed once; only its hash is stored by the server.
 
-## API 文档
+Check the server and available aliases:
+
+```bash
+curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8080/v1/models \
+  -H "Authorization: Bearer YOUR_CLIENT_API_KEY"
+```
+
+### 5. Make a request
+
+```bash
+curl http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_CLIENT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-flash","messages":[{"role":"user","content":"Hello!"}],"stream":false}'
+```
+
+The response echoes the requested `model` ID. That ID is a proxy alias and does not prove which underlying model the web application used.
+
+## API reference
 
 ### `POST /v1/chat/completions`
 
-OpenAI 兼容的聊天补全接口。
+The endpoint accepts the OpenAI Chat Completions request format with these supported fields:
 
-#### 请求体
+| Field | Type | Notes |
+|---|---|---|
+| `model` | string | Client-facing route alias. Defaults to `MODEL_NAME`; see `MODEL_ROUTES`. |
+| `messages` | array | Required. Supports system, user, assistant, and tool messages. Text content only. |
+| `stream` | boolean | Enables OpenAI-style server-sent events. |
+| `thinking_mode` | boolean | Requests a reasoning/thinking response where supported by the web client. |
+| `search_enabled` | boolean | Requests web search where supported by the web client. |
+| `tools` | array | OpenAI function definitions, converted to a DSML prompt. Best-effort only. |
+| `tool_choice` | string or object | Used as a prompt hint; forced tool selection is not guaranteed. |
+| `user` | string | Optional stable caller identifier for multi-turn session reuse. |
+| `temperature`, `top_p`, `max_tokens` | number | Accepted for client compatibility but not forwarded by the web adapter. |
+
+When streaming, the proxy returns OpenAI-format chunks and ends with `data: [DONE]`. Reasoning, when available, is emitted in `reasoning_content` before answer text. Usage values are local estimates, not authoritative upstream billing counts.
+
+Example request:
 
 ```json
 {
-  "model": "deepseek-chat",
+  "model": "deepseek-flash",
   "messages": [
     {"role": "system", "content": "You are a helpful assistant."},
-    {"role": "user", "content": "Hello!"}
+    {"role": "user", "content": "Explain how TLS works."}
   ],
-  "stream": false,
-  "temperature": 0.7,
-  "top_p": 0.95,
-  "max_tokens": null,
-  "thinking_mode": false,
-  "search_enabled": false,
-  "tools": null,
-  "tool_choice": "auto"
+  "stream": true,
+  "thinking_mode": true
 }
 ```
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `model` | `string` | `"deepseek-chat"` | 模型名称（不影响实际模型，仅用于标识） |
-| `messages` | `array` | 必填 | 消息列表，支持 `system`/`user`/`assistant`/`tool` 角色 |
-| `stream` | `boolean` | `false` | 是否流式输出 |
-| `temperature` | `float` | `null` | 采样温度（传递给 DeepSeek 但效果取决于服务端） |
-| `top_p` | `float` | `null` | Top-p 采样 |
-| `max_tokens` | `int` | `null` | 最大生成 tokens |
-| `thinking_mode` | `boolean` | `false` | 开启专家模式深度推理 |
-| `search_enabled` | `boolean` | `false` | 开启联网搜索增强 |
-| `tools` | `array` | `null` | OpenAI 格式的工具定义 |
-| `tool_choice` | `string\|dict` | `null` | 工具选择策略 |
-
-#### 非流式响应（`stream: false`）
-
-```json
-{
-  "id": "chatcmpl-a1b2c3d4e5f6",
-  "object": "chat.completion",
-  "created": 1712345678,
-  "model": "deepseek-chat",
-  "choices": [{
-    "index": 0,
-    "message": {
-      "role": "assistant",
-      "content": "你好！有什么可以帮助你的吗？"
-    },
-    "finish_reason": "stop"
-  }],
-  "usage": {
-    "prompt_tokens": -1,
-    "completion_tokens": -1,
-    "total_tokens": -1
-  }
-}
-```
-
-> **注意**: `usage` 中的 tokens 数返回 `-1`，因为 DeepSeek Chat 不暴露 token 计数。这是已知限制。
-
-#### 流式响应（`stream: true`）
-
-标准 OpenAI SSE 格式，每个事件是一行 `data: {...}\n\n`，以 `data: [DONE]\n\n` 结尾：
-
-```
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":null}]}
-
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"你好"},"finish_reason":null}]}
-
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"！"},"finish_reason":null}]}
-
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
-
-data: [DONE]
-```
-
----
 
 ### `POST /v1/messages`
 
-Anthropic Claude API 兼容的聊天补全接口。
+Anthropic Messages-compatible adapter. It accepts Anthropic-style `messages`, `system`, `tools`, `stream`, and `thinking` fields. `max_tokens`, `temperature`, `top_p`, stop sequences, and metadata other than the supported user ID are not sent upstream. The response echoes the client-provided `model` value.
 
-#### 请求体
+### `GET /v1/models`
 
-```json
-{
-  "model": "claude-3-5-sonnet-20241022",
-  "max_tokens": 1024,
-  "messages": [
-    {"role": "user", "content": "Hello!"}
-  ],
-  "system": "You are a helpful assistant.",
-  "stream": false,
-  "thinking": {"type": "enabled", "budget_tokens": 16000},
-  "tools": [
-    {"name": "get_weather", "description": "获取天气", "input_schema": {"type": "object", "properties": {"city": {"type": "string"}}}}
-  ]
-}
-```
+Returns the model IDs declared in `MODEL_ROUTES`. If no route table is configured, it returns the `MODEL_NAME` fallback.
 
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `model` | `string` | `"claude-3-5-sonnet-20241022"` | 模型名称（不影响实际模型，仅用于标识） |
-| `messages` | `array` | 必填 | 消息列表，支持 `user`/`assistant` 角色 |
-| `system` | `string\|array` | `null` | 系统提示词 |
-| `stream` | `boolean` | `false` | 是否流式输出 |
-| `thinking` | `object` | `null` | `{"type": "enabled"}` 开启思考模式 |
-| `tools` | `array` | `null` | Anthropic 格式的工具定义（`name`/`description`/`input_schema`） |
-| `max_tokens` | `int` | `null` | 被忽略（DeepSeek 不支持） |
-| `metadata` | `object` | `null` | 被忽略 |
-| `stop_sequences` | `array` | `null` | 被忽略 |
+### Multi-turn conversations
 
-#### 非流式响应（`stream: false`）
+A stable identifier (`X-Conversation-Id`, OpenAI's top-level `user`, or Anthropic `metadata.user_id`) keeps separate conversations isolated. By default, requests without an identifier reuse one upstream chat per authenticated API key (`SESSION_CACHE_FALLBACK=per_caller`), which supports clients such as Claude Code that resend history without a conversation ID. Those untagged requests sharing the same key also share one chat, so use separate keys for parallel conversations or set `SESSION_CACHE_FALLBACK=none` and send explicit IDs. Cached sessions remain bound to the account that created them. Set `SESSION_CACHE_TTL=0` to disable reuse.
 
-```json
-{
-  "id": "msg_xxxxxxxxxxxxxxxxxxxxxxxx",
-  "type": "message",
-  "role": "assistant",
-  "content": [
-    {"type": "text", "text": "你好！有什么可以帮助你的吗？"}
-  ],
-  "model": "deepseek-chat",
-  "stop_reason": "end_turn",
-  "stop_sequence": null,
-  "usage": {"input_tokens": -1, "output_tokens": -1}
-}
-```
+## Configuration reference
 
-工具调用时：
+See `.env.example` for the complete commented template. Frequently used settings:
 
-```json
-"content": [
-  {"type": "tool_use", "id": "toolu_xxx", "name": "get_weather", "input": {"city": "北京"}}
-],
-"stop_reason": "tool_use"
-```
+| Variable | Default | Purpose |
+|---|---:|---|
+| `HOST` | `127.0.0.1` | Listen address. Prefer loopback behind a reverse proxy. |
+| `PORT` | `8080` | Listen port. |
+| `DEEPSEEK_ADMIN_PASSWORD` | `admin` | Admin WebUI password. Change before deployment. |
+| `ALLOW_UNAUTHENTICATED_API` | `false` | Disables client-key checks when enabled; local development only. |
+| `MODEL_NAME` | `deepseek-flash` | Fallback model ID returned when a request omits `model`. |
+| `MODEL_ROUTES` | `{"deepseek-flash":"default"}` | Local alias map to private web-chat hints; `expert` is a legacy configurable hint, not an official API model. |
+| `MODE` | `auto` | `auto` / `quick` map to `default`; `expert` sends a legacy hint whose current upstream effect is unverified. |
+| `THINKING` | `auto` | `auto`, `enabled`, or `disabled`. |
+| `SEARCH` | `auto` | `auto`, `enabled`, or `disabled`. |
+| `ACCOUNT_STORE_PATH` | `data/accounts.json` | Account pool storage file. |
+| `DEEPSEEK_ENCRYPTION_KEY` | unset | Fernet key for encrypting account credentials at rest. |
+| `SESSION_CACHE_TTL` | `1800` | Session cache lifetime in seconds; `0` disables reuse. |
+| `SESSION_CACHE_FALLBACK` | `per_caller` | Reuse one chat for untagged requests per authenticated caller; set `none` to require an explicit conversation ID. |
+| `DEEPSEEK_MAX_CONCURRENCY` | `2` | Maximum simultaneous upstream requests across all accounts. |
+| `CLIENT_RPM_PER_KEY` | `60` | Client requests per minute per API key; `0` disables this dimension. |
+| `CLIENT_RPM_PER_IP` | `120` | Client requests per minute per IP; `0` disables this dimension. |
+| `ALLOWED_ORIGINS` | empty | Comma-separated CORS allow-list; empty means same-origin only. |
+| `TRUSTED_PROXIES` | empty | Trusted proxy IPs/CIDRs for forwarded client IP handling. |
+| `DEEPSEEK_IMPERSONATE` | `chrome131` | curl_cffi browser/TLS impersonation profile. |
+| `DEEPSEEK_JITTER_SECS` | `0.4` | Random delay before upstream calls to reduce burstiness. |
 
-#### 流式响应（`stream: true`）
+`MODE`, `THINKING`, and `SEARCH` describe the fields the proxy sends: matching route settings take precedence, then explicit environment settings, then request fields. The current unified web experience may ignore or reinterpret legacy mode hints; this has not been live-verified.
 
-Anthropic 原生 SSE 格式，包含 `message_start`、`content_block_start`、`content_block_delta`、`content_block_stop`、`message_delta`、`message_stop` 事件：
+## Security and deployment
 
-```
-event: message_start
-data: {"type":"message_start","message":{"id":"msg_...","type":"message","role":"assistant","content":[],"model":"deepseek-chat","stop_reason":null,...}}
+- Keep the admin password strong and do not enable `ALLOW_INSECURE_PUBLIC_DEFAULTS` on a public service.
+- Use HTTPS and a reverse proxy if exposing the service beyond localhost.
+- Keep `ALLOW_UNAUTHENTICATED_API=false`, create client keys in the admin UI, and rotate/revoke keys as needed.
+- Set `DEEPSEEK_ENCRYPTION_KEY` to encrypt account tokens/cookies at rest. Back up the key separately; losing it makes encrypted credentials unreadable.
+- Restrict permissions on `data/accounts.json`, `data/api_keys.sqlite3`, and the `data/` directory.
+- Leave `ALLOWED_ORIGINS` empty unless browser-based cross-origin access is needed; then allow only trusted origins.
+- Treat web-account cookies and tokens like passwords. Revoke or refresh them if exposed.
 
-event: content_block_start
-data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}
+## Development and tests
 
-event: content_block_delta
-data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"推理过程..."}}
-
-event: content_block_stop
-data: {"type":"content_block_stop","index":0}
-
-event: content_block_start
-data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}
-
-event: content_block_delta
-data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"回答内容"}}
-
-event: content_block_stop
-data: {"type":"content_block_stop","index":1}
-
-event: message_delta
-data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":-1}}
-
-event: message_stop
-data: {}
-```
-
-> **注意**: Anthropic 端点与 OpenAI 端点共享相同的底层 adapter，MODE/THINKING/SEARCH 环境变量同时影响两个端点。
-
----
-
-## MODE / THINKING / SEARCH 详解
-
-这三个环境变量是独立的控制维度，共同决定每个请求的行为：
-
-| 环境变量 | 可选值 | 默认值 | 说明 |
-|----------|--------|--------|------|
-| `MODE` | `auto` / `quick` / `expert` | `auto` | 控制 `model_type`：`"default"`(quick) 或 `"expert"` |
-| `THINKING` | `auto` / `enabled` / `disabled` | `auto` | 控制 `thinking_enabled`：`true` / `false` |
-| `SEARCH` | `auto` / `enabled` / `disabled` | `auto` | 控制 `search_enabled`（联网搜索）：`true` / `false` |
-
-优先级：环境变量 > 请求参数。当环境变量为 `auto` 时，由客户端请求中的对应字段决定行为。
-
-### 组合示例
-
-| MODE | THINKING | SEARCH | 行为 | 典型场景 |
-|------|----------|--------|------|----------|
-| `auto` | `auto` | `auto` | 由客户端 `thinking_mode` / `search_enabled` 决定 | 完全由客户端灵活控制 |
-| `quick` | `disabled` | `auto` | 强制 V3 快速模式，无推理 | 追求低延迟、不需要深度推理 |
-| `expert` | `enabled` | `enabled` | 强制 R1 专家模式 + 思维链 + 联网搜索 | 深度推理 + 实时信息 |
-| `quick` | `enabled` | `disabled` | 快速模式 + 思考，关闭联网 | 快速响应但附带推理过程 |
-
-### 环境变量与请求参数互斥
-
-```
-MODE=auto, THINKING=auto, SEARCH=auto, 请求 thinking_mode=true  →  quick + 有 reasoning_content
-MODE=expert, THINKING=disabled, 请求 thinking_mode=true  →  expert + 无 reasoning_content + 由客户端决定搜索
-MODE=quick, THINKING=enabled, SEARCH=disabled  →  quick + 有 reasoning_content + 无联网搜索
-```
-
----
-
-## 思维链（Reasoning / Thinking）
-
-当 `thinking_mode=true`（即 expert 模式）时，流式和非流式响应中推理 tokens 通过 `reasoning_content` 字段暴露。
-
-### 流式响应中的推理
-
-专家模式下 SSE 流先输出推理 tokens，再输出正式回答：
-
-```
-data: {"id":"...","choices":[{"index":0,"delta":{"reasoning_content":""},"finish_reason":null}]}
-
-data: {"id":"...","choices":[{"index":0,"delta":{"reasoning_content":"首先"},"finish_reason":null}]}
-
-data: {"id":"...","choices":[{"index":0,"delta":{"reasoning_content":"需要"},"finish_reason":null}]}
-...
-data: {"id":"...","choices":[{"index":0,"delta":{"content":"您好"},"finish_reason":null}]}
-
-data: {"id":"...","choices":[{"index":0,"delta":{"content":"！"},"finish_reason":null}]}
-...
-data: {"id":"...","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
-data: [DONE]
-```
-
-客户端如 NextChat、Open WebUI 等支持识别 `reasoning_content` 字段并展示思维链。如果客户端不支持，可以设置 `THINKING=disabled` 强制不输出推理过程。
-
----
-
-## Function Calling（工具调用）
-
-本项目通过 **DSML（DeepSeek Markup Language）** 提示词注入实现工具调用，利用 DeepSeek Chat 对 XML 标签的理解能力。
-
-### 工作原理
-
-1. `tools` 参数中的函数定义被转换为 DSML 格式的系统提示词
-2. 提示词指导模型以指定 XML 格式响应工具调用
-3. `StreamSieve` 引擎实时从 SSE 流中检测 DSML 标签
-4. 匹配的工具调用被转换为 OpenAI 格式的 `tool_calls` 返回
-
-### 使用示例
-
-```python
-import openai
-
-client = openai.Client(base_url="http://localhost:8080/v1", api_key="sk-your-api-key")
-
-response = client.chat.completions.create(
-    model="deepseek-chat",
-    messages=[{"role": "user", "content": "北京的天气怎么样？"}],
-    tools=[{
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "获取指定城市的天气信息",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "city": {"type": "string", "description": "城市名称"}
-                },
-                "required": ["city"]
-            }
-        }
-    }],
-    tool_choice="auto",
-)
-```
-
-### DSML 格式
-
-DSML 使用类似 XML 的标签结构。当模型决定调用工具时，响应格式为：
-
-```xml
-<|DSML|tool_calls>
-  <|DSML|invoke name="get_weather">
-    <|DSML|parameter name="city"><![CDATA[北京]]></|DSML|parameter>
-  </|DSML|invoke>
-</|DSML|tool_calls>
-```
-
-`StreamSieve` 引擎在收到第一个 `<` 标签字符时就转至 "capture" 模式，积累全部 DSML 内容后一起解析。避免了模型"先输出正文再输工具调用"导致的文本污染。
-
----
-
-## 多轮会话（v2.2.0）
-
-DeepSeek Chat 协议本身支持 `parent_message_id` 串接同 `chat_session_id` 内的消息。v2.2.0 利用此能力为兼容端点提供轻量级多轮支持：
-
-- **Anthropic 客户端**：通过请求体中的 `metadata.user_id` 字段作为会话粘性 key
-- **OpenAI 客户端**：通过自定义 HTTP 头 `X-Conversation-Id` 或顶层 `user` 字段作为会话 key
-- **隔离与账号绑定**：缓存同时绑定调用方和创建会话的 DeepSeek 账号；同一上游 session 不会跨账号提交。
-- **无显式标识时**：不复用会话。不会再根据第一条消息推断 key，以避免不同用户因首句相同而串话。
-
-会话缓存默认 TTL 为 1800 秒（`SESSION_CACHE_TTL`），过期后自动开始新会话。设置 `SESSION_CACHE_TTL=0` 完全禁用多轮行为。
+The test suite does not require DeepSeek credentials or upstream network access:
 
 ```bash
-# OpenAI 多轮示例（带 X-Conversation-Id 头）
-curl http://localhost:8080/v1/chat/completions \
-  -H "Authorization: Bearer $API_KEY" \
-  -H "X-Conversation-Id: user-42-session-7" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"deepseek-chat","messages":[
-    {"role":"user","content":"我叫小明"},
-    {"role":"user","content":"我叫什么？"}
-  ]}'
-# 第二条消息会看到第一条的上下文。
+python -m pip install -r requirements.txt
+python -m pytest
+python -m tests.smoke
+python scripts/run_e2e.py
 ```
 
-> **注意**：多轮会话依赖 DeepSeek 上游接受 `parent_message_id`；如果上游对历史消息有长度限制，长会话可能中途被截断。账号繁忙或不可用时，代理会安全地改用新会话，而不是用其他账号继续旧会话。
-
----
-
-## 模型路由（v2.2.0）
-
-通过 `MODEL_ROUTES` 环境变量，客户端可以发送不同的 `model` 字段让代理自动选择 `model_type`（quick/expert）和默认的 thinking/search 设置：
+Build the React WebUI with Node.js:
 
 ```bash
-# 简单形式 — 字符串值
-MODEL_ROUTES={"deepseek-chat":"default","deepseek-reasoner":"expert"}
-
-# 完整形式 — dict 值
-MODEL_ROUTES={"deepseek-reasoner":{"model_type":"expert","thinking":"enabled","search":"disabled"}}
+cd webui-new
+npm ci
+npm run build
 ```
 
-未命中的 model 名按既有 `MODE` / `THINKING` / `SEARCH` env 变量处理。`/v1/models` 端点会返回 `MODEL_ROUTES` 中声明的所有 model 名。
-
----
-
-## 客户端限流（v2.2.0）
-
-v2.2.0 内置了基于滑动窗口的双维度限流器：
-
-| 环境变量 | 默认值 | 说明 |
-|----------|--------|------|
-| `ENABLE_RATE_LIMIT` | `true` | 总开关；设为 `false` 完全禁用 |
-| `CLIENT_RPM_PER_KEY` | `60` | 每 API key 每分钟请求数（0 = 不限） |
-| `CLIENT_RPM_PER_IP` | `120` | 每 IP 每分钟请求数（0 = 不限） |
-
-每个请求需要 **同时** 通过 key 和 IP 两个维度的检查。命中限流时返回 `429 Too Many Requests`，响应头含：
-
-```
-X-RateLimit-Limit: 60
-X-RateLimit-Remaining: 0
-X-RateLimit-Reset: 47
-Retry-After: 47
-```
-
-> 限流状态保存在进程内；多 worker 部署（gunicorn -w N）实际限制为 N × 配置值。
-
----
-
-## 使用量统计（v2.2.0）
-
-`usage` 字段从 v2.1 的硬编码 `-1` 升级为真实 token 数。优先使用 `tiktoken` 的 `cl100k_base` 编码（与 DeepSeek 兼容），未安装时回退到字符启发式（CJK 1 token/字，ASCII 约 1 token/4 字符）。
-
-服务端面板的 `/admin/api/stats` 现在还返回：
-
-| 字段 | 说明 |
-|------|------|
-| `success_rate` | 0.0..1.0 |
-| `p50_latency_ms` / `p95_latency_ms` / `p99_latency_ms` | 最近 1024 次请求的延迟百分位 |
-| `latency_window_size` | 当前环形缓冲已用大小 |
-| `total_prompt_tokens` / `total_completion_tokens` | 整个进程生命周期的累计 tokens |
-
----
-
-## 安全建议（生产部署 checklist）
-
-部署到公网前请按顺序检查：
-
-1. **修改默认 admin 密码**：`.env` 中 `DEEPSEEK_ADMIN_PASSWORD=…`（16+ 字符随机）。默认密码 + 公网绑定时服务**会拒绝启动**。
-2. **设置 Fernet 加密 key**：`DEEPSEEK_ENCRYPTION_KEY=…`，生成方式 `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`。已有明文 `data/accounts.json` 会在首次启动时自动迁移，原始文件保留为 `accounts.json.v1.bak`。
-3. **设置 API key**：登录 WebUI，在「设置」页创建客户端 Key，并将创建时显示的完整值保存到调用方。Key 哈希保存在 `data/api_keys.sqlite3`；`ALLOW_UNAUTHENTICATED_API` 保持 `false`。
-4. **配置 CORS 白名单**：`ALLOWED_ORIGINS=https://app.example.com`，而不是依赖默认同源策略。
-5. **如果用反向代理**（nginx、Caddy、Traefik）：设置 `TRUSTED_PROXIES=10.0.0.0/8`（你的代理网段）让 admin 限流能正确识别客户端 IP。
-6. **绑定地址**：默认 `127.0.0.1`。如果要走反向代理，保持 loopback；如果直连公网，设置 `HOST=0.0.0.0` 并确保前置有 TLS + WAF。
-7. **使用 HTTPS**：限流响应头里包含 token 计数和 IP；admin 端点需要 HTTPS 保护。强烈建议配合 Cloudflare / Caddy 等前端使用。
-8. **定期轮换**：token / cookie 90 天左右主动续期；`accounts.json` 是敏感文件，确保所在分区权限 `0o700` / NTFS ACL 限制。
-9. **限流**：保留默认 `CLIENT_RPM_PER_KEY=60`、`CLIENT_RPM_PER_IP=120`，按你的实际流量调整。
-10. **监控**：`GET /health` 适合做存活探针；`/admin/api/stats` 适合做业务指标抓取。
-
----
-
-## 架构概览
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                          管理面板                                │
-│  ┌──────────────────────┐  ┌──────────────────────────────────┐ │
-│  │ 前端 SPA (webui/)    │  │ Admin API (admin.py)             │ │
-│  │ · 概览面板           │◄─┤ · 密码认证 / 统计 / 账号管理     │ │
-│  │ · 账号池管理         │  │ · 重登录触发                     │ │
-│  └──────────────────────┘  └───────┬──────────────────────────┘ │
-└────────────────────────────────────┼────────────────────────────┘
-                                     │
-┌──────────────┐     OpenAI 格式      ┌────────▼─────────────────┐
-│  客户端应用   │ ◄───── SSE ────────► │   FastAPI Server          │
-│ (NextChat,    │                      │   (server.py)             │
-│  OpenWebUI,   │                      │                           │
-│  custom)      │                      │  ┌─────────────────────┐  │
-└──────────────┘                      │  │  AccountPool         │  │
-                                      │  │  (account_pool.py)   │  │
-                                      │  │  · 多账号轮询选择    │  │
-                                      │  │  · 状态追踪          │  │
-                                      │  │  · 健康检查          │  │
-                                      │  └────────┬────────────┘  │
-                                      │           │                │
-                                      │  ┌────────▼────────────┐  │
-                                      │  │  ChatAdapter         │  │
-                                      │  │  (adapter.py)        │  │
-                                      │  │  - PoW solving       │  │
-                                      │  │  - Session mgmt      │  │
-                                      │  │  - SSE parsing       │  │
-                                      │  │  - Fragment stm      │  │
-                                      │  └────────┬────────────┘  │
-                                      │           │                │
-                                      │  ┌────────▼────────────┐  │
-                                      │  │ StreamSieve          │  │
-                                      │  │ (tool_sieve.py)      │  │
-                                      │  │ - DSML detection     │  │
-                                      │  │ - Real-time sep      │  │
-                                      │  └──────────────────────┘  │
-                                      │                           │
-                                      │  ┌──────────────────────┐  │
-                                      │  │ DSML Parser          │  │
-                                      │  │ (tool_dsml.py)       │  │
-                                      │  │ - XML parsing        │  │
-                                      │  │ - Format conv        │  │
-                                      │  └──────────────────────┘  │
-                                      └──────────┬────────────────┘
-                                                 │
-                                      DeepSeek 原生协议
-                                      (PoW + SSE)
-                                                 │
-                                      ┌──────────▼────────────┐
-                                      │  chat.deepseek.com    │
-                                      │  (DeepSeek Chat API)  │
-                                      └───────────────────────┘
-```
-
-### 核心组件
-
-| 文件 | 职责 |
-|------|------|
-| `server.py` | FastAPI 服务器，路由分发，MODE/THINKING 控制，OpenAI SSE 格式化 |
-| `adapter.py` | DeepSeek 协议适配器 — PoW 挑战求解，会话创建/管理，原生 SSE 解析，fragment 状态机 |
-| `anthropic_format.py` | Anthropic `/v1/messages` 格式转换 — 请求解析、响应组装、SSE 生成 |
-| `tool_sieve.py` | StreamSieve 流式筛分引擎 — 逐字符检测 DSML 工具调用标签，实时分离正文与工具调用 |
-| `tool_dsml.py` | DSML 解析器/生成器 — XML 格式的 DSML ↔ OpenAI tool_calls 双向转换 |
-| `account_pool.py` | 多账号管理 — CRUD、状态追踪（idle/busy/error）、轮询分配、健康检查 |
-| `admin.py` | 管理后台 API — 密码认证、请求统计、账号池增删查改、重登录触发 |
-| `webui/` | 管理面板前端 — 纯静态 SPA，零 build 依赖 |
-| `sha3_wasm_bg.wasm` | WASM 二进制，用于 DeepSeekHashV1 工作量证明求解 |
-
-### 请求生命周期
-
-1. **客户端请求** → `/v1/chat/completions` 收到 OpenAI 格式请求
-2. **模式解析** → `server.py` 根据环境变量和请求参数确定 `model_type` 和 `thinking_enabled`
-3. **DSML 注入** → 如有 `tools`，`build_dsml_tool_prompt()` 生成 DSML 格式系统提示词
-4. **PoW 求解** → `adapter.py` 请求并求解 DeepSeekHashV1 挑战
-5. **会话创建** → 创建新的 DeepSeek Chat 会话（可选复用）
-6. **请求发送** → 以原生格式发送到 `/api/v0/chat/completion`
-7. **响应处理**:
-   - 非流式：解析 SSE 收集全部内容 → 检测工具调用 → 返回 OpenAI 格式
-   - 流式：逐 token 转发 → StreamSieve 实时筛分 → 格式化 OpenAI SSE
-
----
-
-## 文件结构
-
-```
-├── server.py            # FastAPI 服务器主入口
-├── adapter.py           # DeepSeek 协议适配器 (PoW, 会话, SSE)
-├── anthropic_format.py  # Anthropic /v1/messages 格式转换
-├── tool_sieve.py        # StreamSieve 流式工具调用检测引擎
-├── tool_dsml.py         # DSML 解析器/生成器
-├── account_pool.py      # 多账号池管理 (轮询、状态追踪、健康检查)
-├── admin.py             # 管理后台 API 端点
-├── webui/               # 管理面板前端 (纯静态 SPA)
-│   ├── index.html
-│   ├── app.js
-│   └── style.css
-├── sha3_wasm_bg.wasm    # WASM PoW 求解器
-├── requirements.txt     # Python 依赖
-├── .env.example         # 环境变量模板
-├── .env                 # 你的实际配置（已 .gitignore）
-├── start.bat            # Windows 启动脚本
-├── AGENTS.md            # AI Agent 参考文档
-└── README.md            # 本文件
-```
-
----
-
-## 常见问题
-
-### Q: 启动后请求返回 502 Bad Gateway
-
-原因通常是凭证失效或网络问题：
-
-1. 在 WebUI「账号池」检查账号凭证状态；非交互部署则检查 `data/accounts.json` 中的凭证是否仍然有效
-2. 检查能否访问 `chat.deepseek.com`（可能需要代理）
-3. 检查控制台日志中的具体错误信息
-
-### Q: 流式输出中只有 reasoning_content 没有 content
-
-在 `thinking_mode=true`（专家模式）下，模型会先输出完整的推理过程再输出回答。如果你看到只有推理没有内容：
-
-1. 等待模型完成推理（响应尚未结束）
-2. 如果真是 bug：确认服务端版本，检查 `finish_reason` 是否正常输出。已知旧版本可能缺少 `finish_reason: "stop"` 帧
-
-### Q: 如何关闭思维链/推理展示？
-
-设置环境变量 `THINKING=disabled`，即使请求中 `thinking_mode=true` 也不会输出 `reasoning_content`。
-
-### Q: 一直转圈 / 响应极慢
-
-- 专家模式（`thinking_mode=true`）本身就更慢，模型在做完整推理
-- PoW 求解在低性能机器上可能需要数秒
-- 检查网络到 `chat.deepseek.com` 的延迟
-
-### Q: Windows 下 curl 请求中文返回 422
-
-Windows bash curl 默认编码为 GBK，发送 JSON 时中文字符可能被错误编码。解决方式：
-
-```bash
-# 方式一：将请求体写入 JSON 文件
-curl -X POST http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d @body.json
-
-# 方式二：用 PowerShell（推荐）
-Invoke-RestMethod -Uri http://localhost:8080/v1/chat/completions `
-  -Method POST `
-  -ContentType "application/json" `
-  -Body '{"model":"deepseek-chat","messages":[{"role":"user","content":"你好"}],"stream":true}'
-```
-
-### Q: `.env` 修改后没有生效
-
-需要重启服务器进程。FastAPI 的 reload 模式不会重新加载环境变量：
-
-```bash
-# 先杀掉旧进程
-taskkill /F /IM python.exe
-# 再重新启动
-python -m uvicorn server:app --host 0.0.0.0 --port 8080
-```
-
-### Q: 浏览器插件（如 YouTube 字幕翻译）请求失败，日志显示 405 Method Not Allowed
-
-某些 Chrome 插件在使用 OpenAI 兼容接口前会先发送 `OPTIONS` 预检请求（CORS preflight）来检查服务器是否允许跨域访问。如果服务端未处理 `OPTIONS` 请求，会返回 `405 Method Not Allowed`，导致插件无法正常使用。
-
-**解决方法：** 本项目已内置 CORS 中间件（`CORSMiddleware`），默认允许所有来源、方法和请求头。如果仍遇到跨域问题，请确认版本已包含 `server.py` 中的 CORS 配置。
-
-### Q: 支持多轮对话吗？
-
-不支持。每次请求都是独立的，服务器会创建新的 DeepSeek Chat 会话。多轮会话支持需要在应用层面（如 NextChat）维护上下文。
-
-### Q: 如何查看 PoW 求解过程和调试信息？
-
-适配器使用 `httpx` 发送请求，设置日志级别可查看详细请求/响应：
-
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
-
-### Q: Token/凭证多久过期？
-
-DeepSeek 的 Token 有效期不明确。如果遇到 `401` 或 `403` 响应，重新登录 chat.deepseek.com 并更新 `.env` 中的凭证。
-
----
-
-## 环境变量参考
-
-### 核心配置
-
-| 变量 | 默认值 | 必填 | 说明 |
-|------|--------|------|------|
-| `HOST` | `127.0.0.1` | 否 | 监听地址。`0.0.0.0` 配合默认 admin 密码时拒绝启动 |
-| `PORT` | `8080` | 否 | 服务器监听端口 |
-| `ALLOW_UNAUTHENTICATED_API` | `false` | 否 | 是否允许 `/v1/*` 无鉴权访问；公网部署不要开启 |
-| `ALLOW_INSECURE_PUBLIC_DEFAULTS` | `false` | 否 | 显式确认在公网上使用默认密码（不建议） |
-
-客户端 API Key 在 WebUI「设置」页管理，SQLite 文件中只保存哈希。旧版 `.env` 的 `API_KEYS` / `DEEPSEEK_API_KEY` 仅在首次创建 Key 数据库时导入一次；确认客户端已可用后，可从 `.env` 删除旧配置。
-
-### 账号池存储
-
-| 变量 | 默认值 | 必填 | 说明 |
-|------|--------|------|------|
-| `ACCOUNT_STORE_PATH` | `data/accounts.json` | 否 | 面板持久化账号保存路径 |
-
-### 模型行为
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `MODEL_NAME` | `"deepseek-chat"` | `/v1/models` 默认显示的模型名（`MODEL_ROUTES` 存在时显示路由表） |
-| `MODE` | `"auto"` | `auto` / `quick` / `expert` |
-| `THINKING` | `"auto"` | `auto` / `enabled` / `disabled` |
-| `SEARCH` | `"auto"` | `auto` / `enabled` / `disabled` |
-| `MODEL_ROUTES` | `""` | JSON 路由表，按 `model` 字段切换 `model_type`/thinking/search |
-
-### 管理面板
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `DEEPSEEK_ADMIN_PASSWORD` | `"admin"` | 管理面板登录密码（公网部署必须修改） |
-
-### 限流 & 会话
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `ENABLE_RATE_LIMIT` | `true` | 客户端限流总开关 |
-| `CLIENT_RPM_PER_KEY` | `60` | 每 API key 每分钟请求数 |
-| `CLIENT_RPM_PER_IP` | `120` | 每 IP 每分钟请求数 |
-| `SESSION_CACHE_TTL` | `600` | 多轮会话缓存 TTL（秒），0 = 禁用多轮 |
-
-### 安全 & 加密
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `ALLOWED_ORIGINS` | `""` | CORS 允许的 origin 列表（逗号分隔），空 = 同源 |
-| `ALLOW_CORS_CREDENTIALS` | `false` | 是否允许带 credentials 的跨域（需配合 `ALLOWED_ORIGINS`） |
-| `TRUSTED_PROXIES` | `""` | 信任的代理 IP/CIDR（设置后 `X-Forwarded-For` 才会被采纳） |
-| `DEEPSEEK_ENCRYPTION_KEY` | `""` | Fernet key；设置后 `data/accounts.json` 中的 token/cookies 自动加密 |
-
-### 日志 & 反检测
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `LOG_LEVEL` | `INFO` | DEBUG/INFO/WARNING/ERROR |
-| `LOG_FORMAT` | `json` | `json`（生产）或 `text`（开发） |
-| `DEEPSEEK_IMPERSONATE` | `chrome131` | curl_cffi TLS 指纹 profile |
-| `DEEPSEEK_JITTER_SECS` | `0.0` | 调用间随机抖动（秒） |
-| `DSML_MAX_BUFFER_BYTES` | `1048576` | StreamSieve 捕获缓冲上限 |
-| `DISABLE_AUTO_RECOVER` | `false` | 设为 true 禁用账号自动恢复 |
-
----
-
-## 依赖
-
-| 包 | 最低版本 | 用途 |
-|----|----------|------|
-| `fastapi` | ≥0.100.0 | Web 框架 |
-| `uvicorn` | ≥0.20.0 | ASGI 服务器 |
-| `httpx` | ≥0.24.0 | HTTP 客户端（用于调用 DeepSeek API） |
-| `wasmtime` | ≥14.0.0 | WASM 运行时（PoW 求解） |
-| `python-dotenv` | ≥1.0.0 | `.env` 文件加载 |
-
----
-
-## 许可
-
-本项目使用 **Unlicense** 协议正式发布到公有领域（public domain）。
-
-```
-This is free and unencumbered software released into the public domain.
-```
-
-你可以自由地复制、修改、发布、使用、编译、出售或分发本软件，无论用于商业或非商业目的，无论以任何形式。
-
-**不提供任何保证**，不保证服务的可用性、准确性、稳定性。使用本项目所产生的任何后果由使用者自行承担。
-
----
-
-## 致谢
-
-- [DeepSeek](https://deepseek.com) — 优秀的 AI 模型与平台
-- OpenAI — API 标准格式参考
-- [wasmtime-py](https://github.com/bytecodealliance/wasmtime-py) — WASM 运行时
-- [@minhmc2007](https://github.com/minhmc2007) — 贡献多轮会话复用修复（PR #10，v3.3.0）
-- [@Zhangkc](https://github.com/Zhangkc) — 贡献请求趋势图修复：stats 采样器读取不存在的 avg_latency_ms 属性（PR #14，v3.3.2）
+Main components:
+
+- `server.py` — FastAPI endpoints, authentication, model routing, request/response adaptation.
+- `adapter.py` — private DeepSeek web protocol, proof-of-work, session handling, and SSE parsing.
+- `model_router.py` — client model alias to web-chat mode mapping.
+- `anthropic_format.py` — Anthropic Messages request/response conversion.
+- `tool_dsml.py` and `tool_sieve.py` — prompt-based tool calls and streaming detection.
+- `account_pool.py`, `session_cache.py`, and `admin.py` — account/session management and admin APIs.
+- `webui-new/` — React/TypeScript admin dashboard and playground.
+
+## Known limitations
+
+- This relies on an undocumented private web protocol and may stop working after a DeepSeek frontend or anti-abuse change.
+- The sandbox test suite cannot authenticate to DeepSeek or verify a live upstream request; a successful local build is not a live-service guarantee.
+- Only text input is supported, including when the official model behind a web-chat mode supports other modalities.
+- Tool calling is simulated through DSML instructions. Parallel calls, strict JSON schemas, and `tool_choice` guarantees are not supported.
+- `temperature`, `top_p`, and `max_tokens` are not forwarded to the web client.
+- OpenAI usage values are local estimates; Anthropic usage is currently reported as `-1` because the private web protocol does not provide compatible counts.
+- Tokens/cookies expire and may be invalidated or rate-limited by DeepSeek. Recheck account credentials or replace expired tokens/cookies when needed.
+- Official API model IDs are only proxy aliases here. For precise model selection and official API support, use DeepSeek's official API directly.
+
+## License
+
+This project is released into the public domain under the **Unlicense**. It is provided without warranty.

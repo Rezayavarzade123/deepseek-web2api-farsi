@@ -1,6 +1,8 @@
 """Regression tests for account-bound, caller-scoped upstream sessions."""
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import server
 from session_cache import SessionCache
 
@@ -50,7 +52,7 @@ def test_cached_session_is_reused_by_its_own_account(monkeypatch):
 
 def test_openai_user_is_preserved_and_required_for_cache():
     req = server.ChatCompletionRequest.model_validate({
-        "model": "deepseek-chat",
+        "model": "deepseek-flash",
         "messages": [{"role": "user", "content": "hello"}],
         "user": "alice",
     })
@@ -72,6 +74,50 @@ def test_cache_keys_are_isolated_between_api_keys():
     })()
     assert server._cache_key(request_a, "nonstream", "user:alice") != \
         server._cache_key(request_b, "nonstream", "user:alice")
+
+
+def test_untagged_requests_fall_back_to_one_session_per_api_key(monkeypatch):
+    monkeypatch.setattr(server, "SESSION_CACHE_FALLBACK", "per_caller")
+    request_a1 = type("Request", (), {
+        "headers": {"Authorization": "Bearer api-key-a"},
+    })()
+    request_a2 = type("Request", (), {
+        "headers": {"Authorization": "Bearer api-key-a"},
+    })()
+    request_b = type("Request", (), {
+        "headers": {"Authorization": "Bearer api-key-b"},
+    })()
+
+    key_a1 = server._cache_key(request_a1, "stream", None)
+    key_a2 = server._cache_key(request_a2, "stream", None)
+    key_b = server._cache_key(request_b, "stream", None)
+    assert key_a1 == key_a2
+    assert key_a1 != key_b
+
+
+def test_fallback_can_be_disabled_and_never_applies_to_unauthenticated_clients(monkeypatch):
+    request = type("Request", (), {
+        "headers": {},
+        "client": SimpleNamespace(host="127.0.0.1"),
+    })()
+    monkeypatch.setattr(server, "SESSION_CACHE_FALLBACK", "none")
+    assert server._cache_key(request, "stream", None) is None
+
+    monkeypatch.setattr(server, "SESSION_CACHE_FALLBACK", "per_caller")
+    assert server._cache_key(request, "stream", None) is None
+
+
+def test_explicit_conversation_id_still_takes_precedence(monkeypatch):
+    request = type("Request", (), {
+        "headers": {"Authorization": "Bearer api-key-a"},
+    })()
+    monkeypatch.setattr(server, "SESSION_CACHE_FALLBACK", "per_caller")
+
+    explicit = server._cache_key(request, "stream", "header:thread-1")
+    fallback = server._cache_key(request, "stream", None)
+    assert explicit is not None
+    assert fallback is not None
+    assert explicit != fallback
 
 
 def test_acquire_prefers_the_account_bound_to_cached_session(monkeypatch):

@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label'
 import { api, ApiCallError } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { toast } from '@/hooks/use-toast'
+import { useLanguage } from '@/lib/i18n'
+import { LanguageSwitcher } from '@/components/layout/LanguageSwitcher'
 
 export default function LoginPage() {
   const [password, setPassword] = useState('')
@@ -17,11 +19,10 @@ export default function LoginPage() {
   const token = useAuthStore((s) => s.token)
   const navigate = useNavigate()
   const location = useLocation()
+  const { t } = useLanguage()
 
   useEffect(() => {
-    if (token) {
-      navigate('/', { replace: true })
-    }
+    if (token) navigate('/', { replace: true })
   }, [token, navigate])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,11 +36,11 @@ export default function LoginPage() {
         body: { password },
       })
       setToken(res.token)
-      toast({ title: '登录成功', variant: 'success' })
+      toast({ title: t('login.success'), variant: 'success' })
       const from = (location.state as { from?: string })?.from ?? '/'
       navigate(from, { replace: true })
     } catch (e) {
-      const msg = e instanceof ApiCallError ? e.message : '登录失败'
+      const msg = e instanceof ApiCallError ? e.message : t('login.failed')
       setError(msg)
     } finally {
       setLoading(false)
@@ -48,7 +49,9 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex h-full items-center justify-center overflow-hidden">
-      {/* Gradient backdrop */}
+      <div className="absolute end-4 top-4 z-10">
+        <LanguageSwitcher />
+      </div>
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-primary/10 via-background to-background"
@@ -66,16 +69,17 @@ export default function LoginPage() {
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 text-primary-foreground text-xl font-bold shadow-md">
             D
           </div>
-          <h1 className="text-xl font-semibold tracking-tight">DS2API 管理面板</h1>
-          <p className="text-sm text-muted-foreground">输入管理密码登录</p>
+          <h1 className="text-xl font-semibold tracking-tight">{t('login.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('login.subtitle')}</p>
         </div>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="password">管理密码</Label>
+            <Label htmlFor="password">{t('login.password')}</Label>
             <div className="relative">
               <Input
                 id="password"
+                dir="ltr"
                 type={show ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -83,15 +87,15 @@ export default function LoginPage() {
                 autoFocus
                 autoComplete="current-password"
                 disabled={loading}
-                className="pr-10"
+                className="pe-10"
               />
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 onClick={() => setShow(!show)}
-                className="absolute right-0 top-0 h-9 w-9 text-muted-foreground hover:text-foreground"
-                aria-label={show ? '隐藏密码' : '显示密码'}
+                className="absolute end-0 top-0 h-9 w-9 text-muted-foreground hover:text-foreground"
+                aria-label={show ? t('login.hidePassword') : t('login.showPassword')}
                 tabIndex={-1}
               >
                 {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -107,7 +111,7 @@ export default function LoginPage() {
 
           <Button type="submit" className="w-full" disabled={loading || !password}>
             <LogIn className="h-4 w-4" />
-            {loading ? '登录中…' : '登录'}
+            {loading ? t('login.signingIn') : t('login.signIn')}
           </Button>
         </div>
       </form>

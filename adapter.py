@@ -1,6 +1,6 @@
 """
-DeepSeek Chat API Adapter - WASM-based PoW solving, session management, streaming
-Supports expert mode (thinking_enabled, search_enabled).
+DeepSeek web-chat adapter - WASM-based PoW solving, session management, streaming
+Sends private model/thinking/search hints; current upstream mode semantics are unverified.
 
 Anti-detection upgrades (2026-06):
 - TLS/JA3 impersonation via curl_cffi (chrome131)
@@ -87,7 +87,7 @@ class UpstreamHintError(RuntimeError):
 
 class RateLimitError(UpstreamHintError):
     """Upstream rate limiting (finish_reason ``rate_limit_reached``:
-    '消息发送过于频繁，请稍后重试'). Maps to HTTP 429 on the server side."""
+    'Too many requests. Please retry later.'). Maps to HTTP 429 on the server side."""
 
 
 class UserMutedError(RateLimitError):
@@ -123,12 +123,12 @@ def _mute_msg(raw) -> str | None:
         bd = d.get("biz_data")
         if isinstance(bd, dict) and bd.get("mute_until"):
             try:
-                until = "，解封时间 " + datetime.datetime.fromtimestamp(
+                until = " (mute ends at " + datetime.datetime.fromtimestamp(
                     float(bd["mute_until"])
-                ).strftime("%Y-%m-%d %H:%M")
+                ).strftime("%Y-%m-%d %H:%M") + ")"
             except (TypeError, ValueError, OSError, OverflowError):
                 until = ""
-        return f"上游账号已静音：{biz_msg or 'user is muted'}{until}"
+        return f"Upstream account is muted: {biz_msg or 'user is muted'}{until}"
     return None
 
 
@@ -309,13 +309,13 @@ class DeepSeekAdapter:
                     )
 
         self._msg_counters: dict[str, int] = {}
-        # Header set captured from a live browser fetch().
-        # Names use the same casing the real browser sends.
+        # Header names/casing are captured from a live browser fetch().
+        # Set both locale fields to English for upstream notices.
         self._base_headers = {
             "User-Agent": self._DEFAULT_UA,
             "Accept": "*/*",
             "Accept-Encoding": "gzip, deflate, br, zstd",
-            "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Accept-Language": "en-US,en;q=0.9",
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.token}",
             "Origin": BASE_URL,
@@ -327,12 +327,13 @@ class DeepSeekAdapter:
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
-            # DeepSeek-specific application headers (current as of 2026-08-02).
+            # DeepSeek-specific application headers last captured on 2026-08-02;
+            # compatibility with the current frontend has not been live-verified.
             # x-client-version tracks the browser release; X-App-Version is no
-            # longer sent by the real frontend and was dropped.
+            # longer sent by the observed frontend and was dropped.
             "X-Client-Version": "2.3.0",
             "X-Client-Platform": "web",
-            "X-Client-Locale": "zh_CN",
+            "X-Client-Locale": "en_US",
             "X-Client-Timezone-Offset": "28800",
             "x-client-bundle-id": "com.deepseek.chat",
         }
@@ -493,7 +494,7 @@ class DeepSeekAdapter:
 
         Rate limiting arrives as an SSE ``event: hint`` frame with
         ``type=error`` and ``finish_reason=rate_limit_reached``
-        ('消息发送过于频繁，请稍后重试'). Previously unparsed, so a
+        ('Too many requests. Please retry later.'). Previously unparsed, so a
         rate-limited request looked like a successful empty completion.
         """
         for event_type, data in events:
@@ -508,8 +509,12 @@ class DeepSeekAdapter:
 
     @staticmethod
     def _raise_hint_error(content: str, finish_reason: str):
-        if finish_reason == "rate_limit_reached" or "频繁" in (content or ""):
-            raise RateLimitError(content or "rate limited", finish_reason)
+        lowered = (content or "").lower()
+        if finish_reason == "rate_limit_reached" or any(
+            phrase in lowered for phrase in ("too frequent", "too many requests", "rate limit")
+        ):
+            message = content or "Upstream rate limit reached. Please retry later."
+            raise RateLimitError(message, finish_reason)
         raise UpstreamHintError(
             f"upstream_hint_error: {content or ''} ({finish_reason})"
         )
@@ -572,8 +577,8 @@ class DeepSeekAdapter:
 
         Returns ``(content, thinking)``:
           * ``content`` — the user-facing answer (concatenated text tokens).
-          * ``thinking`` — the expert-mode reasoning chain (empty string in
-            quick mode or when ``thinking_enabled`` is False).
+          * ``thinking`` — reasoning fragments emitted by the upstream (empty
+            when none are emitted or when ``thinking_enabled`` is False).
 
         Previously this method silently discarded ``thinking_parts``,
         which meant the Anthropic ``/v1/messages`` non-streaming endpoint
@@ -694,7 +699,7 @@ class DeepSeekAdapter:
             o = data.get("o", "")
             v = data.get("v", "")
 
-            # Expert mode: initial response with fragments
+            # Thinking output: initial response with fragments
             if isinstance(v, dict) and 'response' in v:
                 resp_data = v['response']
                 fragments = resp_data.get('fragments', [])
@@ -706,7 +711,7 @@ class DeepSeekAdapter:
                         (thinking_parts if frag_type == 'thinking' else content_parts).append(fc)
                 continue
 
-            # Expert mode: fragment content append
+            # Thinking output: fragment content append
             if p == "response/fragments/-1/content" and o == "APPEND":
                 if frag_type == 'thinking':
                     thinking_parts.append(v)
@@ -721,7 +726,7 @@ class DeepSeekAdapter:
                     content_parts.append(v)
                 continue
 
-            # Expert mode: fragment switch
+            # Thinking output: fragment switch
             if p == "response/fragments" and o == "APPEND":
                 if isinstance(v, list) and v:
                     new_type = v[0].get('type', '')
@@ -764,8 +769,9 @@ class DeepSeekAdapter:
                     ready_out: dict | None = None):
         """Stream a chat message, yields content tokens.
 
-        In expert mode (model_type='expert'), yields dicts with
-        __type='thinking' for reasoning tokens and strings for final content.
+        When the upstream emits separate thinking fragments (potentially
+        in response to the legacy expert hint), yields dicts with
+        __type='thinking' and strings for final content.
 
         ``parent_message_id`` is the message id from the previous turn; pass
         ``None`` to start a fresh thread.
@@ -942,7 +948,7 @@ class DeepSeekAdapter:
                         f"({t.get('finish_reason') or 'upstream_toast_error'})"
                     )
 
-                # Initial response with fragments (expert mode)
+                # Initial response with fragments (thinking output)
                 if isinstance(v, dict) and 'response' in v:
                     resp_data = v['response']
                     fragments = resp_data.get('fragments', [])
@@ -962,7 +968,7 @@ class DeepSeekAdapter:
                             yield content
                     continue
 
-                # Fragment content append (expert mode)
+                # Fragment content append (thinking output)
                 if p == "response/fragments/-1/content" and o == "APPEND":
                     if frag_type == 'thinking':
                         if v:
@@ -982,7 +988,7 @@ class DeepSeekAdapter:
                             yield v
                     continue
 
-                # Fragment switch (expert mode)
+                # Fragment switch (thinking output)
                 if p == "response/fragments" and o == "APPEND":
                     if isinstance(v, list) and v:
                         new_type = v[0].get('type', '')

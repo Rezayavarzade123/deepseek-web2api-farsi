@@ -1,30 +1,43 @@
-# DeepSeek Chat API Proxy
+# DeepSeek Web Chat API Proxy
 
-> Convert DeepSeek Chat's (chat.deepseek.com) private API into an **OpenAI / Anthropic compatible** format.
+[English](README_en.md) · [فارسی](README_fa.md)
 
-> **🤖 Fully AI-Generated Disclaimer**: This project does not contain a single line of human-written code. All API endpoint design, protocol reverse-engineering, PoW solving, SSE parsing, format mapping, and documentation were produced in collaboration between the **DeepSeek v4 Flash model** and **Claude Code**.
+> An unofficial proxy that adapts the private `chat.deepseek.com` web-chat protocol to OpenAI-compatible and Anthropic-compatible endpoints.
 
-**Disclaimer**: This project is for learning and research purposes only. It is an unofficial project and is not affiliated with DeepSeek. Use at your own risk; stability is not guaranteed.
+**Important:** This project talks to DeepSeek's web application, not the official `api.deepseek.com` API. It uses a signed-in web account's token and cookies and solves the web client's proof-of-work challenge. The private protocol is undocumented and can change without notice. This project is not affiliated with DeepSeek; use it at your own risk and in compliance with DeepSeek's terms.
+
+## DeepSeek model compatibility
+
+As of **October 11, 2026**, DeepSeek's official API lists `deepseek-flash` as V4.1-Flash, with native vision support, and `deepseek-v4-pro` as V4-Pro-0813, which is text-only. The current [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/) page lists both; the [updated change log](https://api-docs.deepseek.com/updates/) says Pro API service continues after September 14, 2026, with billing unchanged. The legacy API IDs `deepseek-chat` and `deepseek-reasoner` were announced for retirement on July 24, 2026.
+
+DeepSeek V4.1-Flash combines visual understanding with strong reasoning capabilities. The web app's quick, expert, and vision experience has been reported as unified into an adaptive mode ([AIbase report](https://www.aibase.com/news/30949)); this describes DeepSeek's product behavior, not a verified contract for its private web protocol.
+
+This proxy exposes one default **local route alias**:
+
+| Client model ID | Local route | Meaning inside this proxy |
+|---|---|---|
+| `deepseek-flash` | `default` | Default private web-chat route hint for the unified Flash experience |
+
+`deepseek-flash` is not forwarded to `api.deepseek.com`, and the proxy cannot guarantee which upstream model or mode the web app selects. Although the upstream V4.1-Flash model supports vision, this proxy currently forwards text only; image upload/content conversion is not implemented. OpenAI-style non-text parts and Anthropic image blocks are rejected with HTTP 400 rather than silently dropped. Use DeepSeek's official API directly for image input or official API features.
+
+The private web protocol cannot be live-validated in this environment because it requires a real account and access to DeepSeek. Offline tests verify local routing and compatibility behavior only.
 
 ---
 
 ## Features
 
-- **OpenAI-compatible** — `/v1/chat/completions` and `/v1/models` endpoints, supports `stream` mode.
-- **Anthropic-compatible** — `/v1/messages` endpoint, supports Claude API format.
-- **API key auth** — `/v1/*` supports `Authorization: Bearer` / `x-api-key`, suitable for public deployment.
-- **Chain of thought (Reasoning/Thinking)** — in expert mode, reasoning tokens are automatically separated and exposed via the `reasoning_content` field.
-- **Expert mode** — enables R1-style deep reasoning; responses contain a THINK→RESPONSE two-stage flow.
-- **Quick mode** — V3-style fast answers with low latency.
-- **Web search** — enables real-time search enhancement via the `search_enabled` parameter.
-- **Function calling** — implements tool calls via DSML (DeepSeek Markup Language) prompt injection.
-- **Streaming sieve** — the `StreamSieve` engine detects DSML tool-call tags character-by-character and separates body text from tool calls in real time from the SSE stream.
-- **PoW auth** — automatically completes the WASM proof-of-work (DeepSeekHashV1) challenge.
-- **Session management** — automatically creates and manages DeepSeek Chat sessions; optional multi-turn session reuse.
-- **Multi-account pool** — round-robin allocation, idle/busy/error states, health checks, auto-recovery.
-- **Client rate limiting** — sliding window, counted independently per API key and IP; response header `X-RateLimit-*`.
-- **Usage statistics** — tiktoken-based estimation of prompt / completion / total tokens.
-- **Admin panel** — built-in web management UI supporting request statistics and account pool management (multi-account round-robin / persistent CRUD / re-login).
+- OpenAI-compatible `POST /v1/chat/completions` and `GET /v1/models`, including streaming.
+- Anthropic-compatible `POST /v1/messages`, including streaming and tool-use blocks.
+- Client API-key authentication (`Authorization: Bearer` or `x-api-key`).
+- A default local web-chat route plus configurable legacy expert/thinking/search hints; their effect on the current private protocol is unverified.
+- DSML prompt-based tool calling with streaming detection. Tool calling is best-effort, not native or guaranteed.
+- Automatic proof-of-work solving and caller-scoped multi-turn chat reuse; clients can provide explicit IDs to isolate conversations.
+- Multi-account pool with round-robin selection, health checks, and recovery.
+- Per-key/per-IP rate limiting, usage statistics, and an admin dashboard.
+- Optional Fernet encryption for stored account credentials.
+- English and Persian (Farsi) WebUI language selector; Persian uses a right-to-left layout.
+- Optional one-shot Chromium helper to copy your own DeepSeek chat token and Cookie header locally; see [the helper guide](tools/chromium-credential-capture/README.md).
+- Per-user installer that adds the `ds2api` command to PATH without administrator rights.
 
 ---
 
@@ -33,19 +46,97 @@
 ### Prerequisites
 
 - Python 3.10+
-- Network access to `chat.deepseek.com`
+- Node.js 20+ and npm to build the WebUI (optional if you only need the API)
+- Network access to `chat.deepseek.com` and the private DeepSeek signature endpoints used by the adapter
 - A valid DeepSeek account (free to register)
 
 ### Installation
 
-```bash
-# 1. Clone / download this project
-git clone https://github.com/snake-aabb-wtf/deepseek-web2api-free.git
-cd deepseek-web2api-free
+#### Recommended: per-user installer
 
-# 2. Install dependencies (on Windows, prefer start.bat which auto-creates the venv and installs; manual way:)
+The installer needs Python 3.10+. It creates a virtual environment, installs Python dependencies, builds the WebUI when Node.js 20+ and npm are available, and adds `ds2api` to your **user** PATH. It does not require administrator rights.
+
+##### Windows PowerShell
+
+```powershell
+git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
+Set-Location .\deepseek-web2api-free-test
+py -3 .\scripts\install.py
+$env:Path = "$env:LOCALAPPDATA\Programs\DS2API\bin;$env:Path"
+ds2api
+```
+
+##### Windows Command Prompt
+
+```bat
+git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
+cd /d deepseek-web2api-free-test
+py -3 scripts\install.py
+set "PATH=%LOCALAPPDATA%\Programs\DS2API\bin;%PATH%"
+ds2api
+```
+
+##### macOS / Linux
+
+```bash
+git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
+cd deepseek-web2api-free-test
+python3 scripts/install.py
+export PATH="$HOME/.local/bin:$PATH"
+ds2api
+```
+
+The examples update the current shell's PATH so you can start the app immediately; later terminals can run `ds2api` directly from the installed user PATH. A new installation sets the local WebUI password to `admin` for convenience; change it before exposing DS2API to any network. The server refuses a public bind with this weak default. On Windows, the default install location is `%LOCALAPPDATA%\Programs\DS2API`; on macOS/Linux it is `${XDG_DATA_HOME:-~/.local/share}/ds2api`. The installer preserves `.env` and `data/` when rerun to update. If Node.js is not found, installation continues in API-only mode; install Node.js 20+ and rerun to build the WebUI. Pass `--skip-webui` to intentionally skip that build.
+
+#### Open the WebUI
+
+When `ds2api` starts, it prints the WebUI URL and current admin password in the terminal. Keep that output private. Open [http://127.0.0.1:8080/webui/](http://127.0.0.1:8080/webui/) in your browser and sign in with the printed password (`admin` by default). The command does not open a browser automatically. If you changed `PORT` in `.env`, use that port instead of `8080`.
+
+If you need to retrieve a changed password from the installed `.env`:
+
+Windows Command Prompt:
+
+```bat
+findstr /B "DEEPSEEK_ADMIN_PASSWORD=" "%LOCALAPPDATA%\Programs\DS2API\.env"
+```
+
+Windows PowerShell:
+
+```powershell
+Select-String '^DEEPSEEK_ADMIN_PASSWORD=' "$env:LOCALAPPDATA\Programs\DS2API\.env"
+```
+
+macOS / Linux:
+
+```bash
+grep '^DEEPSEEK_ADMIN_PASSWORD=' "${XDG_DATA_HOME:-$HOME/.local/share}/ds2api/.env"
+```
+
+If you installed to a custom `--install-dir`, substitute that location in the command for your operating system.
+
+To uninstall, run the system Python against the installed script (not the app's virtualenv): `py -3 "$env:LOCALAPPDATA\Programs\DS2API\scripts\uninstall.py"` in Windows PowerShell, or `python3 ~/.local/share/ds2api/scripts/uninstall.py` on macOS/Linux. It removes the PATH command and application files while preserving `.env` and `data/`. Add `--purge-user-data` only if you also want to delete stored settings and account credentials. If you chose a custom `--install-dir`, substitute that path.
+
+#### Manual/source-checkout setup
+
+If you prefer to run directly from the checkout, create a virtual environment and install dependencies:
+
+```bash
+python -m venv .venv
+```
+
+```bash
+# macOS / Linux
+. .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+```powershell
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+On Windows, `start.bat` can also create the environment, install missing dependencies, build the WebUI when possible, and start the server.
 
 ### Getting Your Credentials
 
@@ -62,12 +153,15 @@ You need to extract your DeepSeek credentials from the browser developer tools:
 | Token | Value after `Bearer` in the `Authorization` header | Copy from the request headers |
 | Cookies | Full value of the `Cookie` header | Copy from the request headers |
 
+For Chrome, Edge, or Brave, the optional [one-shot credential helper](tools/chromium-credential-capture/README.md) can capture the next matching request after you explicitly arm it. It copies values only when you press a copy button; it does not upload them.
+
 > Add credentials on the WebUI "Account Pool" page or store them in `data/accounts.json`. Account credentials are no longer read from `.env`.
 
 ### Configuration
 
+The per-user installer creates `.env` with the local-test password `admin`. Change it to a strong, unique value before exposing the admin panel to any network. Do not overwrite the rest of that file. For a manual source-checkout setup only, create the template with:
+
 ```bash
-# Copy the environment variable template
 cp .env.example .env
 ```
 
@@ -78,22 +172,23 @@ Edit the `.env` file:
 # The full key is shown only once; the server stores only its hash.
 ALLOW_UNAUTHENTICATED_API=false
 
-# Required: WebUI admin panel password (defaults to "admin" if unset; MUST change before public deployment)
-DEEPSEEK_ADMIN_PASSWORD=***
+# Change this to a strong, unique password before public deployment.
+DEEPSEEK_ADMIN_PASSWORD=change-this-to-a-strong-password
 
 # DeepSeek accounts are configured only in WebUI > Account Pool or data/accounts.json.
 
-# Optional: model routing (enabled by default — Playground shows quick/expert modes)
-MODEL_ROUTES={"deepseek-chat":"default","deepseek-reasoner":"expert"}
+# The current default local route; this is a private web-chat hint, not an official API mapping.
+MODEL_ROUTES={"deepseek-flash":"default"}
 
-# Optional: model name exposed in the API (does not affect the actual model used)
-MODEL_NAME=deepseek-chat
+# Fallback client-facing model ID when a request omits "model".
+MODEL_NAME=deepseek-flash
 
 # Optional: listen address/port (default 127.0.0.1:8080)
 HOST=127.0.0.1
 PORT=8080
 
-# Optional: mode control (auto=respect client / quick / expert)
+# Fallback for IDs not in MODEL_ROUTES. `expert` is a legacy private mode hint;
+# its effect on the current unified upstream experience is unverified.
 MODE=auto
 THINKING=auto
 SEARCH=auto
@@ -103,20 +198,19 @@ For the full list of variables, see `.env.example` and [AGENTS.md](AGENTS.md).
 
 ### Startup
 
-```bash
-# Recommended: use start.bat (Windows)
-#   - Auto-locates Python 3.10+, detects/creates the venv (.venv / venv / env)
-#   - Validates dependencies, auto-installs if missing
-#   - Auto-runs npm build when WebUI artifacts are missing (set WEBUI_REBUILD=1 to force rebuild)
-#   - Only kills this project's own old processes, never kills other services on the port
-#   - Prints the access URL before startup, auto-opens the browser after 3s (set WEBUI_OPEN=0 to skip)
-start.bat
+After installing per-user, open a new terminal and run:
 
-# Manual startup (already in venv):
-#   .venv\Scripts\python -m uvicorn server:app --host 127.0.0.1 --port 8080
+```bash
+ds2api
 ```
 
-After startup the terminal shows the access URL and auto-opens the browser; sample logs:
+For a source checkout on Windows, run `start.bat`. On macOS/Linux, start manually inside the virtual environment with:
+
+```bash
+.venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 8080
+```
+
+After startup, open `http://127.0.0.1:8080/webui/`. `start.bat` may open the browser automatically; the installed `ds2api` command does not. The terminal shows logs such as:
 ```
 INFO:     Started server process [12345]
 INFO:     Waiting for application startup.
@@ -133,8 +227,7 @@ curl http://localhost:8080/health
 curl http://localhost:8080/v1/models \
   -H "Authorization: Bearer ***"
 # → {"object":"list","data":[
-#      {"id":"deepseek-chat",...},
-#      {"id":"deepseek-reasoner",...}   # quick/expert two tiers enabled by default since v3.2.0 MODEL_ROUTES
+#      {"id":"deepseek-flash",...}   # local default route alias
 #   ]}
 ```
 
@@ -146,17 +239,18 @@ The project ships a built-in web admin UI (React SPA since v3.0.0), providing re
 Open in browser: http://localhost:8080/webui/
 ```
 
-> start.bat auto-builds the WebUI (source in `webui-new/`, artifacts in `webui-new/dist/`); if deploying manually, first run `npm install && npm run build` inside `webui-new/`.
+> `start.bat` auto-builds the WebUI when needed (source in `webui-new/`, artifacts in `webui-new/dist/`). If Node.js/npm is unavailable, it starts the API without the UI. For manual builds, run `npm ci && npm run build` inside `webui-new/`.
 
 Default password is `DEEPSEEK_ADMIN_PASSWORD` set in `.env` (defaults to `admin` if unset). Be sure to change the default password before public deployment.
 
-Accounts are loaded only from `data/accounts.json`. Changes made in the WebUI Account Pool page are saved to this file; you can also maintain the JSON file directly.
+By default, accounts are loaded from `data/accounts.json` (change the path with `ACCOUNT_STORE_PATH`). Changes made in the WebUI Account Pool page are saved to that file; you can also maintain the JSON file directly.
 
 Other WebUI features include:
 
-- **Overview** — live request statistics (total/success/failure/latency/uptime) + account pool status overview.
-- **Playground** — online test chat (quick/expert model modes, supports reasoning process visualization).
-- **Settings** — read-only view of the currently effective runtime configuration.
+- **Overview** — live request statistics, latency charts, token estimates, and account-pool status.
+- **Accounts** — add, edit, remove, inspect, and recheck account credentials.
+- **Playground** — streaming test chat with model aliases, thinking, and web-search controls.
+- **Settings** — create/revoke client API keys and inspect runtime configuration.
 ---
 
 ## Non-interactive Account Pool Configuration (for proxies / automation)
@@ -210,7 +304,7 @@ OpenAI-compatible chat completion endpoint.
 
 ```json
 {
-  "model": "deepseek-chat",
+  "model": "deepseek-flash",
   "messages": [
     {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Hello!"}
@@ -228,16 +322,17 @@ OpenAI-compatible chat completion endpoint.
 
 | Parameter | Type | Default | Description |
 |------|------|--------|------|
-| `model` | `string` | `"deepseek-chat"` | Model name (does not affect the actual model; only for identification) |
-| `messages` | `array` | required | Message list, supports `system`/`user`/`assistant`/`tool` roles |
-| `stream` | `boolean` | `false` | Whether to stream output |
-| `temperature` | `float` | `null` | Sampling temperature (passed to DeepSeek but effect depends on the server) |
-| `top_p` | `float` | `null` | Top-p sampling |
-| `max_tokens` | `int` | `null` | Maximum generated tokens |
-| `thinking_mode` | `boolean` | `false` | Enable expert-mode deep reasoning |
-| `search_enabled` | `boolean` | `false` | Enable web search enhancement |
-| `tools` | `array` | `null` | OpenAI-format tool definitions |
-| `tool_choice` | `string\|dict` | `null` | Tool selection strategy |
+| `model` | `string` | `MODEL_NAME` | Client-facing route alias; the response echoes the requested ID. |
+| `messages` | `array` | required | Message list with `system` / `user` / `assistant` / `tool` roles. Text only. |
+| `stream` | `boolean` | `false` | Return OpenAI-style server-sent events. |
+| `temperature` | `float` | `null` | Accepted for compatibility; not forwarded to the web client. |
+| `top_p` | `float` | `null` | Accepted for compatibility; not forwarded. |
+| `max_tokens` | `int` | `null` | Accepted for compatibility; not forwarded. |
+| `thinking_mode` | `boolean` | `false` | Request a thinking/reasoning response where supported. |
+| `search_enabled` | `boolean` | `false` | Request web search where supported. |
+| `tools` | `array` | `null` | OpenAI-format definitions converted to best-effort DSML prompt instructions. |
+| `tool_choice` | `string\|dict` | `null` | Used as a prompt hint; strict or forced tool selection is not guaranteed. |
+| `user` | `string` | `null` | Optional stable caller identifier for multi-turn session reuse. |
 
 #### Non-streaming response (`stream: false`)
 
@@ -246,7 +341,7 @@ OpenAI-compatible chat completion endpoint.
   "id": "chatcmpl-a1b2c3d4e5f6",
   "object": "chat.completion",
   "created": 1712345678,
-  "model": "deepseek-chat",
+  "model": "deepseek-flash",
   "choices": [{
     "index": 0,
     "message": {
@@ -256,25 +351,25 @@ OpenAI-compatible chat completion endpoint.
     "finish_reason": "stop"
   }],
   "usage": {
-    "prompt_tokens": -1,
-    "completion_tokens": -1,
-    "total_tokens": -1
+    "prompt_tokens": 10,
+    "completion_tokens": 7,
+    "total_tokens": 17
   }
 }
 ```
 
-> **Note**: token counts in `usage` return `-1` because DeepSeek Chat does not expose token counts. This is a known limitation.
+The response echoes the requested `model` ID. OpenAI `usage` values are local estimates, not authoritative upstream billing counts. The proxy does not guarantee which underlying model a web-chat mode uses.
 
 #### Streaming response (`stream: true`)
 
 Standard OpenAI SSE format; each event is a line `data: {...}\n\n`, ending with `data: [DONE]\n\n`:
 
 ```
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":null}]}
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"deepseek-flash","choices":[{"index":0,"delta":{},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"deepseek-flash","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-...","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+data: {"id":"chatcmpl-...","object":"chat.completion.chunk","model":"deepseek-flash","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
 
 data: [DONE]
 ```
@@ -289,7 +384,7 @@ Anthropic Claude API-compatible chat completion endpoint.
 
 ```json
 {
-  "model": "claude-3-5-sonnet-20241022",
+  "model": "deepseek-flash",
   "max_tokens": 1024,
   "messages": [
     {"role": "user", "content": "Hello!"}
@@ -305,15 +400,16 @@ Anthropic Claude API-compatible chat completion endpoint.
 
 | Parameter | Type | Default | Description |
 |------|------|--------|------|
-| `model` | `string` | `"claude-3-5-sonnet-20241022"` | Model name (does not affect the actual model; only for identification) |
-| `messages` | `array` | required | Message list, supports `user`/`assistant` roles |
-| `system` | `string\|array` | `null` | System prompt |
-| `stream` | `boolean` | `false` | Whether to stream output |
-| `thinking` | `object` | `null` | `{"type": "enabled"}` enables thinking mode |
-| `tools` | `array` | `null` | Anthropic-format tool definitions (`name`/`description`/`input_schema`) |
-| `max_tokens` | `int` | `null` | Ignored (DeepSeek does not support it) |
-| `metadata` | `object` | `null` | Ignored |
-| `stop_sequences` | `array` | `null` | Ignored |
+| `model` | `string` | client-supplied | Echoed in the response; use a configured local alias to select a route. |
+| `messages` | `array` | required | Message list with `user` / `assistant` roles. Text only. |
+| `system` | `string\|array` | `null` | System prompt. |
+| `stream` | `boolean` | `false` | Return Anthropic-style server-sent events. |
+| `thinking` | `object` | `null` | `{"type": "enabled"}` requests thinking where supported. |
+| `tools` | `array` | `null` | Anthropic-format tool definitions, converted to best-effort DSML prompt instructions. |
+| `max_tokens` | `int` | `null` | Accepted for compatibility; not forwarded to the web client. |
+| `temperature`, `top_p` | number | `null` | Accepted for compatibility; not forwarded. |
+| `metadata.user_id` | `string` | `null` | Optional caller identifier for multi-turn session reuse. Other metadata is ignored. |
+| `stop_sequences` | `array` | `null` | Accepted but not forwarded. |
 
 #### Non-streaming response (`stream: false`)
 
@@ -325,7 +421,7 @@ Anthropic Claude API-compatible chat completion endpoint.
   "content": [
     {"type": "text", "text": "Hello! How can I help you?"}
   ],
-  "model": "deepseek-chat",
+  "model": "deepseek-flash",
   "stop_reason": "end_turn",
   "stop_sequence": null,
   "usage": {"input_tokens": -1, "output_tokens": -1}
@@ -347,7 +443,7 @@ Native Anthropic SSE format, containing `message_start`, `content_block_start`, 
 
 ```
 event: message_start
-data: {"type":"message_start","message":{"id":"msg_...","type":"message","role":"assistant","content":[],"model":"deepseek-chat","stop_reason":null,...}}
+data: {"type":"message_start","message":{"id":"msg_...","type":"message","role":"assistant","content":[],"model":"deepseek-flash","stop_reason":null,...}}
 
 event: content_block_start
 data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}
@@ -374,48 +470,31 @@ event: message_stop
 data: {}
 ```
 
-> **Note**: the Anthropic endpoint shares the same underlying adapter as the OpenAI endpoint; the MODE/THINKING/SEARCH environment variables affect both endpoints.
+The response echoes the requested `model` ID. Anthropic usage is currently returned as `-1` because the private web protocol does not provide compatible token counts. The `MODE`, `THINKING`, and `SEARCH` settings affect both endpoints.
 
 ---
 
-## MODE / THINKING / SEARCH explained
+## Private web-chat mode hints
 
-These three environment variables are independent control dimensions that together decide each request's behavior:
+DeepSeek's current web experience is reported to combine the former quick, expert, and vision modes into one adaptive Flash experience. The proxy still accepts these environment settings and translates them into private request fields, but their current effect on DeepSeek's undocumented protocol has not been live-verified. They are not official API model selectors.
 
-| Env var | Values | Default | Description |
-|----------|--------|------|------|
-| `MODE` | `auto` / `quick` / `expert` | `auto` | controls `model_type`: `"default"`(quick) or `"expert"` |
-| `THINKING` | `auto` / `enabled` / `disabled` | `auto` | controls `thinking_enabled`: `true` / `false` |
-| `SEARCH` | `auto` / `enabled` / `disabled` | `auto` | controls `search_enabled` (web search): `true` / `false` |
+| Setting | Values | Proxy-side behavior |
+|---|---|---|
+| `MODE` | `auto` / `quick` / `expert` | `auto` / `quick` sends the `default` mode hint; `expert` sends the legacy `expert` hint. |
+| `THINKING` | `auto` / `enabled` / `disabled` | `auto` respects the client request; the other values force the corresponding request flag. |
+| `SEARCH` | `auto` / `enabled` / `disabled` | `auto` respects the client request where available; the other values force the corresponding request flag. |
 
-Priority: environment variable > request parameter. When an env var is `auto`, the corresponding field in the client request decides the behavior.
-
-### Combination examples
-
-| MODE | THINKING | SEARCH | Behavior | Typical use case |
-|------|----------|--------|----------|----------|
-| `auto` | `auto` | `auto` | decided by client `thinking_mode` / `search_enabled` | fully flexible client control |
-| `quick` | `disabled` | `auto` | force V3 quick mode, no reasoning | low latency, no deep reasoning needed |
-| `expert` | `enabled` | `enabled` | force R1 expert mode + chain of thought + web search | deep reasoning + real-time info |
-| `quick` | `enabled` | `disabled` | quick mode + thinking, search off | fast responses with reasoning attached |
-
-### Env var / request parameter interplay
-
-```
-MODE=auto, THINKING=auto, SEARCH=auto, request thinking_mode=true  →  quick + has reasoning_content
-MODE=expert, THINKING=disabled, request thinking_mode=true  →  expert + no reasoning_content + search decided by client
-MODE=quick, THINKING=enabled, SEARCH=disabled  →  quick + has reasoning_content + no web search
-```
+A matching `MODEL_ROUTES` entry takes precedence over `MODE`. Per-route thinking/search overrides take precedence over their environment settings; when those settings are `auto`, the request fields are used. These describe what the proxy sends, not a guarantee about how the current upstream app responds.
 
 ---
 
-## Chain of Thought (Reasoning / Thinking)
+## Reasoning / Thinking Output
 
-When `thinking_mode=true` (i.e., expert mode), reasoning tokens are exposed via the `reasoning_content` field in both streaming and non-streaming responses.
+If the upstream emits reasoning while thinking is enabled, the proxy exposes it in the `reasoning_content` field in streaming and non-streaming responses.
 
 ### Reasoning in streaming responses
 
-In expert mode the SSE stream first outputs reasoning tokens, then the final answer:
+When thinking is enabled and the upstream emits reasoning, the SSE stream may output reasoning fragments before the final answer:
 
 ```
 data: {"id":"...","choices":[{"index":0,"delta":{"reasoning_content":""},"finish_reason":null}]}
@@ -432,13 +511,13 @@ data: {"id":"...","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
 data: [DONE]
 ```
 
-Clients such as NextChat and Open WebUI recognize the `reasoning_content` field and display the chain of thought. If your client does not support it, set `THINKING=disabled` to force suppression of reasoning output.
+Clients that understand the `reasoning_content` field can display the upstream reasoning output separately from the answer. If you do not want reasoning output, set `THINKING=disabled` or disable thinking in the matching route.
 
 ---
 
 ## Function Calling (Tool Calls)
 
-This project implements tool calls via **DSML (DeepSeek Markup Language)** prompt injection, leveraging DeepSeek Chat's understanding of XML tags.
+This project simulates tool calls via **DSML (DeepSeek Markup Language)** prompt instructions. The upstream web protocol does not expose native function calling, so tool selection and argument validity are best-effort.
 
 ### How it works
 
@@ -455,7 +534,7 @@ import openai
 client = openai.Client(base_url="http://localhost:8080/v1", api_key="***")
 
 response = client.chat.completions.create(
-    model="deepseek-chat",
+    model="deepseek-flash",
     messages=[{"role": "user", "content": "What's the weather in Beijing?"}],
     tools=[{
         "type": "function",
@@ -487,51 +566,62 @@ DSML uses an XML-like tag structure. When the model decides to call a tool, the 
 </|DSML|tool_calls>
 ```
 
-The `StreamSieve` engine switches to "capture" mode upon receiving the first `<` tag character, accumulates all DSML content, then parses it together. This avoids the text pollution caused by the model first outputting body text and then outputting tool calls.
+The `StreamSieve` engine buffers possible DSML prefixes and captures a tool call once recognized. This reduces markup leakage but cannot guarantee that the model follows the requested format.
 
 ---
 
 ## Multi-turn sessions (v2.2.0)
 
-The DeepSeek Chat protocol itself supports chaining messages within the same `chat_session_id` via `parent_message_id`. v2.2.0 leverages this for lightweight multi-turn support on the compatible endpoints:
+The proxy provides lightweight multi-turn behavior by reusing an upstream `chat_session_id` and `parent_message_id` when DeepSeek's web endpoint accepts them:
 
 - **Anthropic clients**: use the `metadata.user_id` field in the request body as the session stickiness key.
 - **OpenAI clients**: use the custom HTTP header `X-Conversation-Id` or the top-level `user` field as the session key.
-- **Isolation and account binding**: cached sessions are scoped to the caller and bound to the DeepSeek account that created them; an upstream session is never submitted with another account's credentials.
-- **Without an explicit identifier**: sessions are not reused. The proxy never infers a key from the first message, since unrelated users often share the same opener.
+- **Without an explicit identifier**: by default (`SESSION_CACHE_FALLBACK=per_caller`), untagged requests reuse one upstream chat per authenticated API key. This supports clients such as Claude Code that resend history without a stable ID. Separate conversations using the same key will share that chat; use separate API keys for parallel threads, or set `SESSION_CACHE_FALLBACK=none` and provide explicit identifiers.
+- **Caller isolation and account binding**: cache keys include the authenticated caller, and every cached upstream session remains bound to its creating DeepSeek account.
 
 The session cache TTL defaults to 1800 seconds (`SESSION_CACHE_TTL`); a new session starts automatically after expiry. Set `SESSION_CACHE_TTL=0` to fully disable multi-turn behavior.
 
 ```bash
-# OpenAI multi-turn example (with X-Conversation-Id header)
+# Turn 1
 curl http://localhost:8080/v1/chat/completions \
   -H "Authorization: Bearer $API_KEY" \
   -H "X-Conversation-Id: user-42-session-7" \
   -H "Content-Type: application/json" \
-  -d '{"model":"deepseek-chat","messages":[
-    {"role":"user","content":"My name is Xiao Ming"},
+  -d '{"model":"deepseek-flash","messages":[{"role":"user","content":"My name is Alex."}]}'
+
+# Turn 2: reuse the same ID and include the conversation history.
+# Replace the assistant text below with the actual response from turn 1.
+curl http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "X-Conversation-Id: user-42-session-7" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-flash","messages":[
+    {"role":"user","content":"My name is Alex."},
+    {"role":"assistant","content":"Nice to meet you, Alex."},
     {"role":"user","content":"What is my name?"}
   ]}'
-# The second message will see the context of the first.
 ```
 
 > **Note**: multi-turn sessions depend on DeepSeek upstream accepting `parent_message_id`; if the upstream has a length limit on history, long sessions may be truncated mid-way. When the original account is busy or unavailable, the proxy safely starts a new session instead of continuing the old one with another account.
 
 ---
 
-## Model routing (v2.2.0)
+## Model routing
 
-Through the `MODEL_ROUTES` environment variable, clients can send different `model` fields to let the proxy auto-select `model_type` (quick/expert) and default thinking/search settings:
+The checked-in configuration exposes `deepseek-flash` as the single default local route:
 
-```bash
-# Simple form — string value
-MODEL_ROUTES={"deepseek-chat":"default","deepseek-reasoner":"expert"}
-
-# Full form — dict value
-MODEL_ROUTES={"deepseek-reasoner":{"model_type":"expert","thinking":"enabled","search":"disabled"}}
+```ini
+MODEL_NAME=deepseek-flash
+MODEL_ROUTES={"deepseek-flash":"default"}
 ```
 
-Model names not matched fall back to the existing `MODE` / `THINKING` / `SEARCH` env variables. The `/v1/models` endpoint returns all model names declared in `MODEL_ROUTES`.
+`MODEL_ROUTES` values are private web-chat mode hints, not official API model IDs. The router still supports a custom `expert` hint for compatibility, but it is not the official `deepseek-v4-pro` model and may no longer select a separate upstream mode. For example, a custom alias can be configured as:
+
+```ini
+MODEL_ROUTES={"deepseek-flash":"default","my-legacy-expert":{"model_type":"expert","thinking":"enabled","search":"disabled"}}
+```
+
+A matched route takes precedence over `MODE`; per-route thinking/search overrides take precedence over their environment settings. Unmatched IDs use `MODE`, `THINKING`, and `SEARCH` fallbacks. `GET /v1/models` returns configured route IDs, or the `MODEL_NAME` fallback if no routes are configured. Responses echo the client-supplied ID; the echo does not identify the upstream model or prove that the requested ID has a corresponding route.
 
 ---
 
@@ -558,11 +648,11 @@ Retry-After: 47
 
 ---
 
-## Usage statistics (v2.2.0)
+## Usage statistics
 
-The `usage` field was upgraded from the hardcoded `-1` in v2.1 to real token counts. It prefers `tiktoken`'s `cl100k_base` encoding (DeepSeek-compatible), and falls back to a character heuristic (CJK 1 token/char, ASCII ~1 token/4 chars) when tiktoken is not installed.
+OpenAI usage fields and dashboard token totals are local estimates, using `tiktoken`'s `cl100k_base` encoding when available and a fallback heuristic otherwise. They are not official upstream billing counts. The Anthropic endpoint currently returns `-1` for input/output token counts because the private web protocol does not provide compatible values.
 
-The server panel's `/admin/api/stats` now also returns:
+The server panel's `/admin/api/stats` also returns:
 
 | Field | Description |
 |------|------|
@@ -577,14 +667,14 @@ The server panel's `/admin/api/stats` now also returns:
 
 Before deploying to the public internet, check in order:
 
-1. **Change the default admin password**: `DEEPSEEK_ADMIN_PASSWORD=***` in `.env` (random characters). The service **refuses to start** when using the default password with a public binding.
+1. **Change the default admin password**: set `DEEPSEEK_ADMIN_PASSWORD` in `.env` to a strong, unique value. The service **refuses to start** with a weak/default password on a public bind unless `ALLOW_INSECURE_PUBLIC_DEFAULTS=true` is explicitly enabled (not recommended).
 2. **Set a Fernet encryption key**: `DEEPSEEK_ENCRYPTION_KEY=***` (generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`). Existing plaintext `data/accounts.json` is auto-migrated on first startup; the original is kept as `accounts.json.v1.bak`.
 3. **Set API keys**: log into the WebUI, create a client key on the Settings page, and save its one-time value in your client. Only the key hash is stored in `data/api_keys.sqlite3`; keep `ALLOW_UNAUTHENTICATED_API` as `false`.
-4. **Configure the CORS whitelist**: `ALLOWED_ORIGINS=https://app.example.com`, rather than relying on the default same-origin policy.
+4. **Configure CORS only if needed**: leave `ALLOWED_ORIGINS` empty for the default same-origin policy, or list only trusted origins such as `https://app.example.com`.
 5. **If using a reverse proxy** (nginx, Caddy, Traefik): set `TRUSTED_PROXIES=10.0.0.0/8` (your proxy's CIDR) so admin rate limiting correctly identifies client IPs.
 6. **Bind address**: default `127.0.0.1`. If using a reverse proxy, keep loopback; if exposing directly to the internet, set `HOST=0.0.0.0` and ensure TLS + WAF in front.
-7. **Use HTTPS**: rate-limit response headers contain token counts and IPs; admin endpoints need HTTPS protection. Strongly recommended with a front like Cloudflare / Caddy.
-8. **Rotate regularly**: proactively renew tokens / cookies around every 90 days; `accounts.json` is sensitive — ensure its partition permissions are `0o700` / NTFS ACL restricted.
+7. **Use HTTPS**: admin endpoints and client API keys need transport protection. Use a trusted reverse proxy such as Caddy or nginx when exposing the service.
+8. **Protect credentials**: tokens/cookies can expire or be revoked without a fixed schedule. Restrict access to `data/accounts.json` and rotate credentials immediately if exposed.
 9. **Rate limiting**: keep the defaults `CLIENT_RPM_PER_KEY=60`, `CLIENT_RPM_PER_IP=120` and adjust as needed.
 10. **Monitoring**: `GET /health` suits liveness probes; `/admin/api/stats` suits business-metric scraping.
 ---
@@ -597,7 +687,7 @@ Before deploying to the public internet, check in order:
 │  ┌──────────────────────┐  ┌──────────────────────────────────┐ │
 │  │ Frontend SPA (webui) │  │ Admin API (admin.py)             │ │
 │  │ · Overview           │◄─┤ · Password auth / stats / acct mgmt │
-│  │ · Account pool mgmt  │  │ · Re-login trigger               │ │
+│  │ · Account pool mgmt  │  │ · Credential check               │ │
 │  └──────────────────────┘  └───────┬──────────────────────────┘ │
 └────────────────────────────────────┼────────────────────────────┘
                                      │
@@ -657,8 +747,8 @@ Before deploying to the public internet, check in order:
 | `tool_sieve.py` | StreamSieve streaming sieve engine — character-by-character DSML tool-call tag detection, real-time separation of body text and tool calls |
 | `tool_dsml.py` | DSML parser/generator — bidirectional XML-format DSML ↔ OpenAI tool_calls conversion |
 | `account_pool.py` | Multi-account management — CRUD, state tracking (idle/busy/error), round-robin allocation, health checks |
-| `admin.py` | Admin backend API — password auth, request stats, account pool CRUD, re-login trigger |
-| `webui/` | Admin panel frontend — pure static SPA, zero build dependency |
+| `admin.py` | Admin backend API — password auth, request stats, account pool CRUD, credential recheck trigger |
+| `webui-new/` | React/TypeScript admin dashboard and playground; build output is in `webui-new/dist/` |
 | `sha3_wasm_bg.wasm` | WASM binary for DeepSeekHashV1 proof-of-work solving |
 
 ### Request lifecycle
@@ -678,25 +768,28 @@ Before deploying to the public internet, check in order:
 ## File Structure
 
 ```
-├── server.py            # FastAPI server main entry
-├── adapter.py           # DeepSeek protocol adapter (PoW, sessions, SSE)
-├── anthropic_format.py  # Anthropic /v1/messages format conversion
-├── tool_sieve.py        # StreamSieve streaming tool-call detection engine
-├── tool_dsml.py         # DSML parser/generator
-├── account_pool.py      # Multi-account pool management (round-robin, state tracking, health checks)
-├── admin.py             # Admin backend API endpoints
-├── webui/               # Admin panel frontend (pure static SPA)
-│   ├── index.html
-│   ├── app.js
-│   └── style.css
-├── sha3_wasm_bg.wasm    # WASM PoW solver
+├── server.py            # FastAPI endpoints, auth, routing, and response formatting
+├── adapter.py           # Private DeepSeek web protocol, proof of work, sessions, and SSE
+├── model_router.py      # Local model-alias routing to default / expert web modes
+├── anthropic_format.py  # Anthropic Messages request/response conversion
+├── tool_sieve.py        # Streaming DSML tool-call detection
+├── tool_dsml.py         # DSML prompt generation and parsing
+├── account_pool.py      # Multi-account pool management and health checks
+├── session_cache.py     # Caller-scoped, account-bound upstream session cache
+├── admin.py             # Admin API, account management, and runtime statistics
+├── api_key_store.py     # Hashed client API-key storage
+├── crypto.py            # Optional account-credential encryption
+├── webui-new/           # React/TypeScript admin dashboard and playground
+├── tests/               # Offline unit, smoke, and integration checks
+├── scripts/run_e2e.py   # Offline end-to-end validation
+├── sha3_wasm_bg.wasm    # Proof-of-work solver module
 ├── requirements.txt     # Python dependencies
 ├── .env.example         # Environment variable template
-├── .env                 # Your actual config (gitignored)
 ├── start.bat            # Windows startup script
-├── AGENTS.md            # AI Agent reference docs
-└── README.md            # This file
+└── docs/release-notes/  # Release history
 ```
+
+Production WebUI assets are built into `webui-new/dist/` and served by the FastAPI app at `/webui/`.
 
 ---
 
@@ -710,26 +803,26 @@ Usually invalid credentials or a network issue:
 2. Check that `chat.deepseek.com` is reachable (may need a proxy).
 3. Check the specific error in the console logs.
 
-### Q: Streaming output only has reasoning_content, no content
+### Q: Streaming output only has `reasoning_content`, no `content`
 
-When `thinking_mode=true` (expert mode), the model outputs the full reasoning process first, then the answer. If you see only reasoning without content:
+When thinking is enabled, the upstream may emit reasoning fragments before the answer. The stream is not complete until the finish event and `[DONE]` marker arrive. If the stream ends without answer content:
 
-1. Wait for the model to finish reasoning (the response is not over).
-2. If it's a real bug: confirm the server version and check whether `finish_reason` is output normally. Known older versions may lack the `finish_reason: "stop"` frame.
+1. Check whether the client stopped reading before the stream finished.
+2. Confirm the server version and inspect the final `finish_reason` and server logs for upstream errors.
 
-### Q: How do I disable chain-of-thought / reasoning display?
+### Q: How do I disable reasoning output?
 
-Set `THINKING=disabled`; then even if `thinking_mode=true` in the request, `reasoning_content` will not be output.
+Set `THINKING=disabled` to override request-level thinking. If a `MODEL_ROUTES` entry explicitly sets a thinking value, that per-model override takes precedence; remove or change it if you want thinking disabled for that route.
 
 ### Q: Constantly loading / very slow responses
 
-- Expert mode (`thinking_mode=true`) is inherently slower; the model is doing full reasoning.
+- Expert-mode or thinking-enabled requests may take longer; wait for the stream to finish before treating it as stalled.
 - PoW solving can take seconds on low-performance machines.
 - Check network latency to `chat.deepseek.com`.
 
-### Q: curl on Windows returns 422 for Chinese requests
+### Q: curl on Windows returns 422 for non-ASCII request text
 
-Windows bash curl defaults to GBK encoding, and Chinese characters in JSON may be mis-encoded. Solutions:
+Some Windows shells use a legacy console encoding that can mis-encode non-ASCII JSON text. Solutions:
 
 ```bash
 # Option 1: write the request body to a JSON file
@@ -741,42 +834,35 @@ curl -X POST http://localhost:8080/v1/chat/completions \
 Invoke-RestMethod -Uri http://localhost:8080/v1/chat/completions `
   -Method POST `
   -ContentType "application/json" `
-  -Body '{"model":"deepseek-chat","messages":[{"role":"user","content":"你好"}],"stream":true}'
+  -Body '{"model":"deepseek-flash","messages":[{"role":"user","content":"Hello"}],"stream":true}'
 ```
 
 ### Q: Changes to `.env` don't take effect
 
-You need to restart the server process. FastAPI's reload mode does not reload environment variables:
+Restart the server process after editing `.env`; Uvicorn's source-file reload watcher does not automatically restart when only the environment file changes:
 
 ```bash
-# First kill the old process
-taskkill /F /IM python.exe
-# Then restart
-python -m uvicorn server:app --host 0.0.0.0 --port 8080
+# Stop the existing server with Ctrl+C in its terminal, then restart it.
+python -m uvicorn server:app --host 127.0.0.1 --port 8080
 ```
 
 ### Q: Browser extensions (e.g. YouTube subtitle translation) fail, logs show 405 Method Not Allowed
 
 Some Chrome extensions send an `OPTIONS` preflight request (CORS preflight) before using the OpenAI-compatible API to check whether the server allows cross-origin access. If the server does not handle `OPTIONS`, it returns `405 Method Not Allowed`, breaking the extension.
 
-**Solution:** this project ships a built-in CORS middleware (`CORSMiddleware`) allowing all origins, methods, and headers by default. If you still hit CORS issues, confirm the version includes the CORS config in `server.py`.
+**Solution:** CORS is same-origin by default. If a trusted browser client needs cross-origin access, set `ALLOWED_ORIGINS` to a narrow comma-separated allow-list and restart the service. Do not use a wildcard origin for a public deployment.
 
 ### Q: Does it support multi-turn conversations?
 
-No. Each request is independent; the server creates a new DeepSeek Chat session. Multi-turn support needs to be maintained at the application level (e.g. NextChat) by keeping context.
+Yes. For separate threads, provide a stable conversation identifier: `X-Conversation-Id`, OpenAI's `user` field, or Anthropic's `metadata.user_id`. Without one, the default `SESSION_CACHE_FALLBACK=per_caller` shares one upstream chat among untagged requests with the same API key. Set it to `none` and provide IDs if you need to isolate parallel threads. Reuse is account-bound and expires according to `SESSION_CACHE_TTL`.
 
-### Q: How do I view the PoW solving process and debug info?
+### Q: How do I view PoW and adapter debug information?
 
-The adapter uses `httpx` to send requests; set the log level to view detailed requests/responses:
+Set `LOG_LEVEL=DEBUG` in `.env` and restart the service. Avoid sharing logs without checking for account identifiers or other sensitive information.
 
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
+### Q: How long do account credentials last?
 
-### Q: How long do tokens/credentials last?
-
-DeepSeek's token validity is unclear. If you encounter `401` or `403` responses, re-log into chat.deepseek.com and update the credentials in `.env`.
+DeepSeek can expire or revoke web-account tokens and cookies without a fixed schedule. If requests return `401` or `403`, refresh the credentials in the WebUI Account Pool or `data/accounts.json`; account credentials are not read from `.env`.
 
 ---
 
@@ -803,11 +889,11 @@ Client API keys are managed in WebUI > Settings, and only hashes are stored in S
 
 | Variable | Default | Description |
 |------|--------|------|
-| `MODEL_NAME` | `"deepseek-chat"` | model name shown in `/v1/models` by default (shows route table if `MODEL_ROUTES` exists) |
-| `MODE` | `"auto"` | `auto` / `quick` / `expert` |
-| `THINKING` | `"auto"` | `auto` / `enabled` / `disabled` |
-| `SEARCH` | `"auto"` | `auto` / `enabled` / `disabled` |
-| `MODEL_ROUTES` | `""` | JSON route table, switches `model_type`/thinking/search by `model` field |
+| `MODEL_NAME` | `deepseek-flash` | Fallback client-facing ID for requests that omit `model`; used by `/v1/models` when no routes are configured. |
+| `MODE` | `auto` | Proxy-side fallback: `auto` / `quick` send `default`; `expert` sends a legacy hint whose current upstream effect is unverified. A matching route wins first. |
+| `THINKING` | `auto` | `auto` / `enabled` / `disabled`; matching route settings take precedence. |
+| `SEARCH` | `auto` | `auto` / `enabled` / `disabled`; matching route settings take precedence. |
+| `MODEL_ROUTES` | `{"deepseek-flash":"default"}` | Local alias-to-hint map; optional legacy `expert` values are private-protocol hints, not official model IDs. |
 
 ### Admin panel
 
@@ -822,7 +908,8 @@ Client API keys are managed in WebUI > Settings, and only hashes are stored in S
 | `ENABLE_RATE_LIMIT` | `true` | client rate-limit master switch |
 | `CLIENT_RPM_PER_KEY` | `60` | requests per minute per API key |
 | `CLIENT_RPM_PER_IP` | `120` | requests per minute per IP |
-| `SESSION_CACHE_TTL` | `600` | multi-turn session cache TTL (seconds), 0 = disable multi-turn |
+| `SESSION_CACHE_TTL` | `1800` | Session-cache lifetime in seconds; `0` disables reuse. |
+| `SESSION_CACHE_FALLBACK` | `per_caller` | Reuse one upstream chat for untagged requests per authenticated caller; set `none` to require explicit IDs. |
 
 ### Security & encryption
 
@@ -840,9 +927,11 @@ Client API keys are managed in WebUI > Settings, and only hashes are stored in S
 | `LOG_LEVEL` | `INFO` | DEBUG/INFO/WARNING/ERROR |
 | `LOG_FORMAT` | `json` | `json` (production) or `text` (development) |
 | `DEEPSEEK_IMPERSONATE` | `chrome131` | curl_cffi TLS fingerprint profile |
-| `DEEPSEEK_JITTER_SECS` | `0.0` | random jitter between calls (seconds) |
-| `DSML_MAX_BUFFER_BYTES` | `1048576` | StreamSieve capture buffer cap |
-| `DISABLE_AUTO_RECOVER` | `false` | set true to disable account auto-recovery |
+| `DEEPSEEK_JITTER_SECS` | `0.4` | Random delay before upstream calls, in seconds. |
+| `DEEPSEEK_MAX_CONCURRENCY` | `2` | Maximum simultaneous upstream requests across all accounts. |
+| `DEEPSEEK_RATE_LIMIT_RETRY_DELAYS` | `5,15` | Backoff delays in seconds before retrying rate-limited requests. |
+| `DSML_MAX_BUFFER_BYTES` | `1048576` | StreamSieve capture buffer cap. |
+| `DISABLE_AUTO_RECOVER` | `false` | Set `true` to disable account auto-recovery. |
 
 ---
 
@@ -850,11 +939,35 @@ Client API keys are managed in WebUI > Settings, and only hashes are stored in S
 
 | Package | Minimum version | Purpose |
 |----|----------|----|
-| `fastapi` | ≥0.100.0 | Web framework |
-| `uvicorn` | ≥0.20.0 | ASGI server |
-| `httpx` | ≥0.24.0 | HTTP client (for calling the DeepSeek API) |
-| `wasmtime` | ≥14.0.0 | WASM runtime (PoW solving) |
+| `fastapi` | ≥0.115.0 | Web framework |
+| `uvicorn` | ≥0.30.0 | ASGI server |
+| `curl_cffi` | ≥0.7.1 | Upstream HTTP requests with browser/TLS impersonation |
+| `wasmtime` | ≥15.0.0 | WASM runtime for proof-of-work solving |
 | `python-dotenv` | ≥1.0.0 | `.env` file loading |
+| `httpx2` | ≥2.0.0 | In-process FastAPI test client transport |
+| `httpx` | ≥0.27.0 | HTTP dependency used by the transport stack |
+| `cryptography` | ≥42.0.0 | Optional account-credential encryption |
+| `tiktoken` | ≥0.7.0 | Local OpenAI token-count estimates |
+| `pytest` | ≥8.0.0 | Test suite |
+
+---
+
+## Tests and WebUI build
+
+The local test suite does not require DeepSeek credentials or live upstream access:
+
+```bash
+python -m pip install -r requirements.txt
+python -m pytest
+python -m tests.smoke
+python scripts/run_e2e.py
+
+cd webui-new
+npm ci
+npm run build
+```
+
+A passing offline test/build validates local behavior only; it does not prove the private DeepSeek web protocol is currently accepted.
 
 ---
 

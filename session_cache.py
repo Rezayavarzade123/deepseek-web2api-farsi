@@ -4,17 +4,20 @@ Multi-turn conversation cache.
 DeepSeek Chat's API accepts a ``parent_message_id`` to thread replies
 inside a ``chat_session_id``. To support multi-turn conversations on the
 OpenAI / Anthropic compatible endpoints, we cache a small per-conversation
-record and reuse it when a client sends a stable identity token.
+record and reuse it when a client sends a stable identity token or the per-caller fallback is enabled.
 
-Cache key: a server-generated value scoped to the authenticated caller (or
-client IP when unauthenticated) and an explicit conversation identifier.
+Cache key: a server-generated value scoped to the authenticated caller and
+an explicit conversation identifier, or an optional per-caller fallback.
 
 ``conversation_id`` resolution order (highest first):
-  1. The OpenAI request's top-level ``user`` field (string).
-  2. The Anthropic request's ``metadata.user_id`` field.
-  3. No cache entry.  Reusing an upstream session without an explicit
-     conversation id can join independent conversations that happen to have
-     the same opening message.
+  1. The ``X-Conversation-Id`` request header.
+  2. The OpenAI request's top-level ``user`` field (string).
+  3. The Anthropic request's ``metadata.user_id`` field.
+  4. When ``SESSION_CACHE_FALLBACK=per_caller``, a shared identifier for
+     requests using the same authenticated API key. This supports clients
+     that resend full history without a stable ID, but joins their untagged
+     threads; use separate keys or disable the fallback for isolation.
+  5. No cache entry when no ID was supplied and the fallback is disabled or the caller is unauthenticated.
 
 Cache value: ``ChatSession(chat_session_id, account_id, parent_message_id,
 msg_counters)``.  The account binding prevents a session created with one

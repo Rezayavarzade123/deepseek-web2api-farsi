@@ -16,24 +16,24 @@ def test_empty_routes():
 
 
 def test_simple_string_route():
-    r = ModelRouter(json.dumps({"deepseek-chat": "default", "deepseek-reasoner": "expert"}))
-    d = r.route_for("deepseek-reasoner")
-    assert d.matched_model == "deepseek-reasoner"
+    r = ModelRouter(json.dumps({"deepseek-flash": "default", "custom-expert": "expert"}))
+    d = r.route_for("custom-expert")
+    assert d.matched_model == "custom-expert"
     assert d.model_type == "expert"
-    d = r.route_for("deepseek-chat")
+    d = r.route_for("deepseek-flash")
     assert d.model_type == "default"
 
 
 def test_dict_route_with_thinking_and_search():
     raw = json.dumps({
-        "deepseek-reasoner": {
+        "custom-expert": {
             "model_type": "expert",
             "thinking": "enabled",
             "search": "disabled",
         }
     })
     r = ModelRouter(raw)
-    d = r.route_for("deepseek-reasoner")
+    d = r.route_for("custom-expert")
     assert d.thinking is True
     assert d.search is False
 

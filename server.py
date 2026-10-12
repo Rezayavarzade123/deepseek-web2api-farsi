@@ -1,6 +1,7 @@
 """
 OpenAI-compatible API proxy for DeepSeek Chat
-Supports streaming, tool calling (via DSML prompt injection), content parts, expert mode.
+Supports streaming, DSML prompt-based tools, text content parts, and configurable
+private web-chat mode hints. The current upstream mode behavior is unverified.
 """
 import json
 import os
@@ -63,7 +64,7 @@ configure_from_env()
 log = get_logger("server")
 API_KEY_STORE = get_api_key_store()
 
-MODEL_NAME = os.environ.get("MODEL_NAME", "deepseek-chat")
+MODEL_NAME = os.environ.get("MODEL_NAME", "deepseek-flash")
 MODE = os.environ.get("MODE", "auto").strip().lower()
 THINKING = os.environ.get("THINKING", "auto").strip().lower()
 SEARCH = os.environ.get("SEARCH", "auto").strip().lower()
@@ -71,6 +72,7 @@ HOST = os.environ.get("HOST", "127.0.0.1").strip()
 PORT = int(os.environ.get("PORT", "8080"))
 ALLOW_UNAUTHENTICATED_API = os.environ.get("ALLOW_UNAUTHENTICATED_API", "false").strip().lower() in {"1", "true", "yes", "on"}
 ALLOW_INSECURE_PUBLIC_DEFAULTS = os.environ.get("ALLOW_INSECURE_PUBLIC_DEFAULTS", "false").strip().lower() in {"1", "true", "yes", "on"}
+SESSION_CACHE_FALLBACK = os.environ.get("SESSION_CACHE_FALLBACK", "per_caller").strip().lower()
 
 # CORS allow-list. Empty = same-origin only.
 ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
@@ -132,7 +134,7 @@ def _check_rate_limit(request: Request) -> dict:
     return headers
 
 
-app = FastAPI(title="DeepSeek Chat API (Expert Preview)", version="2.2.0")
+app = FastAPI(title="DeepSeek Chat API (Expert Preview)", version="3.4.0")
 
 # ── CORS ─────────────────────────────────────────────────────────────
 # Empty ALLOWED_ORIGINS ⇒ same-origin only. We deliberately do NOT set
@@ -297,7 +299,7 @@ class ChatCompletionRequest(BaseModel):
     # OpenAI's top-level end-user identifier.  It is used only as one part of
     # an opaque, caller-scoped upstream-session cache key.
     user: Optional[str] = None
-    # Expert mode
+    # Private web-chat thinking hint; upstream mode semantics may change.
     thinking_mode: Optional[bool] = False
     search_enabled: Optional[bool] = False
 
@@ -472,6 +474,16 @@ def _cache_scope(request: Request) -> str:
 
 
 def _cache_key(request: Request, mode: str, conversation_id: str | None) -> str | None:
+    use_caller_fallback = (
+        conversation_id is None
+        and SESSION_CACHE_FALLBACK == "per_caller"
+        and bool(_extract_api_key(request))
+    )
+    if use_caller_fallback:
+        # Compatibility fallback for clients such as Claude Code that resend
+        # full history but omit a stable conversation identifier. Keep it
+        # scoped to an authenticated caller; unauthenticated IPs never share.
+        conversation_id = "fallback:per-caller"
     derived = SessionCache.derive_cache_key(_cache_scope(request), conversation_id)
     return f"{mode}:{derived}" if derived else None
 
@@ -497,6 +509,43 @@ def _extract_anthropic_user(req: AnthropicRequest, request: Request) -> str | No
 
 
 # ---- Message / prompt building ----
+
+def _unsupported_image_input() -> None:
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "Image/multimodal input is not supported by this text-only proxy. "
+            "Use the official DeepSeek API for image input."
+        ),
+    )
+
+
+def _validate_openai_text_only(messages: list[ChatMessage]) -> None:
+    for message in messages:
+        if isinstance(message.content, list) and any(part.type != "text" for part in message.content):
+            _unsupported_image_input()
+
+
+def _contains_anthropic_image(value: Any) -> bool:
+    if isinstance(value, dict):
+        if value.get("type") == "image":
+            return True
+        return any(_contains_anthropic_image(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_contains_anthropic_image(item) for item in value)
+    if getattr(value, "type", None) == "image":
+        return True
+    if hasattr(value, "model_dump"):
+        return _contains_anthropic_image(value.model_dump())
+    return False
+
+
+def _validate_anthropic_text_only(req: AnthropicRequest) -> None:
+    if _contains_anthropic_image(req.system) or any(
+        _contains_anthropic_image(message.content) for message in req.messages
+    ):
+        _unsupported_image_input()
+
 
 def _extract_text(content: Union[str, list[ContentPart], None]) -> str:
     if content is None:
@@ -555,7 +604,8 @@ def _build_prompt(messages: list[ChatMessage], tools: list[ToolDef] | None = Non
 # ---- OpenAI SSE helpers ----
 
 def _openai_chunk(proxy_id: str, content: str = "", finish: bool = False,
-                  reasoning_content: str = None, role: str = None) -> str:
+                  reasoning_content: str = None, role: str = None,
+                  model: str | None = None) -> str:
     delta = {}
     if not finish:
         if role:
@@ -573,18 +623,20 @@ def _openai_chunk(proxy_id: str, content: str = "", finish: bool = False,
         "id": proxy_id,
         "object": "chat.completion.chunk",
         "created": int(time.time()),
-        "model": MODEL_NAME,
+        "model": model or MODEL_NAME,
         "choices": [choice],
     }
     return f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
 
 
-def _emit_tool_calls_chunks(tool_calls: list[dict], chat_id: str) -> list[str]:
-    """生成 OpenAI 流式 tool_calls SSE 事件。"""
+def _emit_tool_calls_chunks(
+    tool_calls: list[dict], chat_id: str, model: str | None = None
+) -> list[str]:
+    """Build OpenAI streaming SSE events for tool calls."""
     chunks = []
     created = int(time.time())
     for i, tc in enumerate(tool_calls):
-        # 首帧：id + name
+        # First chunk: tool-call ID and function name
         delta = {
             "role": "assistant",
             "content": None,
@@ -595,17 +647,17 @@ def _emit_tool_calls_chunks(tool_calls: list[dict], chat_id: str) -> list[str]:
                 "function": {"name": tc["function"]["name"], "arguments": ""},
             }],
         }
-        chunks.append(f"data: {json.dumps({'id': chat_id, 'object': 'chat.completion.chunk', 'created': created, 'model': MODEL_NAME, 'choices': [{'index': 0, 'delta': delta, 'finish_reason': None}]}, ensure_ascii=False)}\n\n")
-        # 次帧：arguments
+        chunks.append(f"data: {json.dumps({'id': chat_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model or MODEL_NAME, 'choices': [{'index': 0, 'delta': delta, 'finish_reason': None}]}, ensure_ascii=False)}\n\n")
+        # Next chunk: function arguments
         delta2 = {
             "tool_calls": [{
                 "index": i,
                 "function": {"arguments": tc["function"]["arguments"]},
             }],
         }
-        chunks.append(f"data: {json.dumps({'id': chat_id, 'object': 'chat.completion.chunk', 'created': created, 'model': MODEL_NAME, 'choices': [{'index': 0, 'delta': delta2, 'finish_reason': None}]}, ensure_ascii=False)}\n\n")
+        chunks.append(f"data: {json.dumps({'id': chat_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model or MODEL_NAME, 'choices': [{'index': 0, 'delta': delta2, 'finish_reason': None}]}, ensure_ascii=False)}\n\n")
     # finish
-    chunks.append(f"data: {json.dumps({'id': chat_id, 'object': 'chat.completion.chunk', 'created': created, 'model': MODEL_NAME, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]}, ensure_ascii=False)}\n\n")
+    chunks.append(f"data: {json.dumps({'id': chat_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model or MODEL_NAME, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'tool_calls'}]}, ensure_ascii=False)}\n\n")
     return chunks
 
 
@@ -651,20 +703,22 @@ async def list_models(request: Request):
 async def chat_completions(req: ChatCompletionRequest, request: Request):
     _check_api_auth(request)
     rate_headers = _check_rate_limit(request)
+    _validate_openai_text_only(req.messages)
     proxy_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     prompt = _build_prompt(req.messages, req.tools, req.tool_choice)
 
     # Resolve model_type / thinking / search from MODEL_ROUTES first, then
     # MODE/THINKING/SEARCH env vars, then the per-request fields.
+    response_model = req.model or MODEL_NAME
     decision = MODEL_ROUTER.route_for(req.model)
 
-    # MODE controls model_type (quick → "default", expert → "expert")
+    # MODE controls the private model_type hint (expert is legacy/unverified).
     if decision.matched_model:
         model_type = decision.model_type
     elif MODE == "expert":
         model_type = "expert"
     else:
-        model_type = "default"  # quick mode or auto, matches native request format
+        model_type = "default"  # default private hint for auto / quick fallback
 
     # THINKING controls thinking_enabled independent of mode
     if decision.thinking is not None:
@@ -692,10 +746,12 @@ async def chat_completions(req: ChatCompletionRequest, request: Request):
     openai_user = _extract_openai_user(req, request)
     if req.stream:
         return await _handle_stream(proxy_id, prompt, req.tools, model_type=model_type, thinking_mode=thinking, search_enabled=search, rate_headers=rate_headers,
-                                    cache_key=_cache_key(request, "stream", openai_user))
+                                    cache_key=_cache_key(request, "stream", openai_user),
+                                    response_model=response_model)
 
     return _handle_nonstream(proxy_id, prompt, req.tools, model_type=model_type, thinking_mode=thinking, search_enabled=search,
-                             cache_key=_cache_key(request, "nonstream", openai_user))
+                             cache_key=_cache_key(request, "nonstream", openai_user),
+                             response_model=response_model)
 
 
 # ---- Anthropic /v1/messages endpoint ----
@@ -705,6 +761,7 @@ async def chat_completions(req: ChatCompletionRequest, request: Request):
 async def messages(req: AnthropicRequest, request: Request):
     _check_api_auth(request)
     rate_headers = _check_rate_limit(request)
+    _validate_anthropic_text_only(req)
     proxy_id = _msg_id()
     system_str = req.system
     if isinstance(system_str, list):
@@ -721,6 +778,7 @@ async def messages(req: AnthropicRequest, request: Request):
 
     # Resolve model_type / thinking / search from MODEL_ROUTES first, then
     # MODE/THINKING/SEARCH env vars, then the per-request fields.
+    response_model = req.model or MODEL_NAME
     decision = MODEL_ROUTER.route_for(req.model)
 
     # MODE controls model_type
@@ -763,18 +821,22 @@ async def messages(req: AnthropicRequest, request: Request):
                                        model_type=model_type, thinking_mode=thinking,
                                        search_enabled=search,
                                        rate_headers=rate_headers,
-                                       cache_key=_cache_key(request, "stream", anth_user))
+                                       cache_key=_cache_key(request, "stream", anth_user),
+                                       response_model=response_model)
 
     return _anthropic_nonstream(proxy_id, prompt, tool_names,
                                 model_type=model_type, thinking_mode=thinking,
                                 search_enabled=search,
-                                cache_key=_cache_key(request, "nonstream", anth_user))
+                                cache_key=_cache_key(request, "nonstream", anth_user),
+                                response_model=response_model)
 
 
 def _anthropic_nonstream(msg_id: str, prompt: str, tool_names: list[str],
                          model_type: str | None = None,
                          thinking_mode: bool = False, search_enabled: bool = False,
-                         cache_key: str | None = None):
+                         cache_key: str | None = None,
+                         response_model: str | None = None):
+    response_model = response_model or MODEL_NAME
     acq = _acquire(cache_key=cache_key)
     try:
         eff = acq.prepare_prompt(prompt)
@@ -789,31 +851,31 @@ def _anthropic_nonstream(msg_id: str, prompt: str, tool_names: list[str],
             acq.record_message_id(ready_out["response_message_id"],
                                   ready_out.get("session_id"),
                                   full_prompt=prompt)
-        get_stats().record(MODEL_NAME, (time.time() - t0) * 1000)
+        get_stats().record(response_model, (time.time() - t0) * 1000)
     except RateLimitError as e:
         # Match the OpenAI endpoint: upstream throttling is a client-visible
         # 429, not an opaque Anthropic 500. This includes account mute errors
         # because UserMutedError derives from RateLimitError.
-        get_stats().record(MODEL_NAME, 0, success=False)
+        get_stats().record(response_model, 0, success=False)
         if cache_key:
             SESSION_CACHE.invalidate(cache_key)
         raise HTTPException(
             status_code=429,
-            detail=f"上游限流：{e.args[0] if e.args else '请求过于频繁'}，请稍后重试",
+            detail="The upstream rate limit was reached. Please retry later.",
         )
     except UpstreamHintError as e:
-        get_stats().record(MODEL_NAME, 0, success=False)
+        get_stats().record(response_model, 0, success=False)
         pool.mark_error(acq.acct, str(e))
         raise HTTPException(status_code=502, detail=str(e))
     except UpstreamEmptyError:
         # Empty upstream bodies are transient and should not poison the
         # account pool, but the client still needs a meaningful 502.
-        get_stats().record(MODEL_NAME, 0, success=False)
+        get_stats().record(response_model, 0, success=False)
         if cache_key:
             SESSION_CACHE.invalidate(cache_key)
-        raise HTTPException(status_code=502, detail="上游返回空响应（可能触发限流），请稍后重试")
+        raise HTTPException(status_code=502, detail="The upstream returned an empty response (possibly rate limited). Please retry later.")
     except Exception as e:
-        get_stats().record(MODEL_NAME, 0, success=False)
+        get_stats().record(response_model, 0, success=False)
         pool.mark_error(acq.acct, str(e))
         raise
     finally:
@@ -821,7 +883,7 @@ def _anthropic_nonstream(msg_id: str, prompt: str, tool_names: list[str],
 
     tool_calls, cleaned = parse_dsml_tool_calls(content, tool_names)
     return build_nonstream_response(
-        msg_id, MODEL_NAME,
+        msg_id, response_model,
         content_text=cleaned or content,
         tool_calls=tool_calls,
         thinking_text=thinking,
@@ -832,13 +894,15 @@ async def _anthropic_stream(msg_id: str, prompt: str, tool_names: list[str],
                             model_type: str | None = None,
                             thinking_mode: bool = False, search_enabled: bool = False,
                             rate_headers: dict | None = None,
-                            cache_key: str | None = None):
+                            cache_key: str | None = None,
+                            response_model: str | None = None):
+    response_model = response_model or MODEL_NAME
     acq = _acquire(cache_key=cache_key)
     try:
         eff = acq.prepare_prompt(prompt)
         ds_id = acq.create_session()
     except Exception as e:
-        get_stats().record(MODEL_NAME, 0, success=False)
+        get_stats().record(response_model, 0, success=False)
         pool.mark_error(acq.acct, str(e))
         acq.release()
         raise
@@ -849,7 +913,7 @@ async def _anthropic_stream(msg_id: str, prompt: str, tool_names: list[str],
         ready_out: dict = {}
         try:
             for event in stream_response(
-                msg_id, MODEL_NAME,
+                msg_id, response_model,
                 acq.adapter.chat_stream(ds_id, eff,
                                        model_type=model_type,
                                        thinking_enabled=thinking_mode,
@@ -864,9 +928,9 @@ async def _anthropic_stream(msg_id: str, prompt: str, tool_names: list[str],
                 acq.record_message_id(ready_out["response_message_id"],
                                       ready_out.get("session_id"),
                                       full_prompt=prompt)
-            get_stats().record(MODEL_NAME, (time.time() - t0) * 1000)
+            get_stats().record(response_model, (time.time() - t0) * 1000)
         except Exception as e:
-            get_stats().record(MODEL_NAME, (time.time() - t0) * 1000, success=False)
+            get_stats().record(response_model, (time.time() - t0) * 1000, success=False)
             if isinstance(e, (RateLimitError, UpstreamEmptyError)):
                 if cache_key:
                     SESSION_CACHE.invalidate(cache_key)
@@ -893,8 +957,10 @@ async def _anthropic_stream(msg_id: str, prompt: str, tool_names: list[str],
 def _handle_nonstream(proxy_id: str, prompt: str, tools: list[ToolDef] | None = None,
                       model_type: str | None = None,
                       thinking_mode: bool = False, search_enabled: bool = False,
-                      cache_key: str | None = None):
+                      cache_key: str | None = None,
+                      response_model: str | None = None):
     """Non-streaming completion with tool call detection."""
+    response_model = response_model or MODEL_NAME
     prompt_tokens = count_text(prompt)
     acq = _acquire(cache_key=cache_key)
     try:
@@ -911,30 +977,30 @@ def _handle_nonstream(proxy_id: str, prompt: str, tools: list[ToolDef] | None = 
                                   ready_out.get("session_id"),
                                   full_prompt=prompt)
         completion_tokens = count_text(content) + count_text(thinking)
-        get_stats().record(MODEL_NAME, (time.time() - t0) * 1000,
+        get_stats().record(response_model, (time.time() - t0) * 1000,
                            prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
     except RateLimitError as e:
         # Rate limiting is a transient upstream state, not a credential
         # problem — do NOT mark the account as errored, or the pool would
         # drain to 503 once the limiter cools down. Invalidate the cached
         # session so the next call starts fresh.
-        get_stats().record(MODEL_NAME, 0, success=False)
+        get_stats().record(response_model, 0, success=False)
         if cache_key:
             SESSION_CACHE.invalidate(cache_key)
-        raise HTTPException(status_code=429, detail=f"上游限流：{e.args[0] if e.args else '请求过于频繁'}，请稍后重试")
+        raise HTTPException(status_code=429, detail="The upstream rate limit was reached. Please retry later.")
     except UpstreamHintError as e:
-        get_stats().record(MODEL_NAME, 0, success=False)
+        get_stats().record(response_model, 0, success=False)
         pool.mark_error(acq.acct, str(e))
         raise HTTPException(status_code=502, detail=str(e))
     except UpstreamEmptyError as e:
         # Transient empty responses (stale pooled connection / upstream
         # hiccup) — retried in the adapter already; do not poison the pool.
-        get_stats().record(MODEL_NAME, 0, success=False)
+        get_stats().record(response_model, 0, success=False)
         if cache_key:
             SESSION_CACHE.invalidate(cache_key)
-        raise HTTPException(status_code=502, detail="上游返回空响应（可能触发限流），请稍后重试")
+        raise HTTPException(status_code=502, detail="The upstream returned an empty response (possibly rate limited). Please retry later.")
     except Exception as e:
-        get_stats().record(MODEL_NAME, 0, success=False)
+        get_stats().record(response_model, 0, success=False)
         pool.mark_error(acq.acct, str(e))
         raise
     finally:
@@ -949,7 +1015,7 @@ def _handle_nonstream(proxy_id: str, prompt: str, tools: list[ToolDef] | None = 
             "id": proxy_id,
             "object": "chat.completion",
             "created": int(time.time()),
-            "model": MODEL_NAME,
+            "model": response_model,
             "choices": [{
                 "index": 0,
                 "message": {
@@ -970,7 +1036,7 @@ def _handle_nonstream(proxy_id: str, prompt: str, tools: list[ToolDef] | None = 
         "id": proxy_id,
         "object": "chat.completion",
         "created": int(time.time()),
-        "model": MODEL_NAME,
+        "model": response_model,
         "choices": [{
             "index": 0,
             "message": {
@@ -991,15 +1057,17 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
                          model_type: str | None = None,
                          thinking_mode: bool = False, search_enabled: bool = False,
                          rate_headers: dict | None = None,
-                         cache_key: str | None = None):
-    """Streaming completion with StreamSieve tool call detection and expert mode support."""
+                         cache_key: str | None = None,
+                         response_model: str | None = None):
+    """Streaming completion with StreamSieve tool-call detection."""
+    response_model = response_model or MODEL_NAME
     prompt_tokens = count_text(prompt)
     acq = _acquire(cache_key=cache_key)
     try:
         eff = acq.prepare_prompt(prompt)
         ds_id = acq.create_session()
     except Exception as e:
-        get_stats().record(MODEL_NAME, 0, success=False, prompt_tokens=prompt_tokens)
+        get_stats().record(response_model, 0, success=False, prompt_tokens=prompt_tokens)
         pool.mark_error(acq.acct, str(e))
         acq.release()
         raise
@@ -1014,7 +1082,7 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
         # session cache on success so the next turn has a valid parent.
         ready_out: dict = {}
         try:
-            yield _openai_chunk(proxy_id, finish=False)
+            yield _openai_chunk(proxy_id, finish=False, model=response_model)
             role_sent = False
 
             def _parse_fn(text):
@@ -1049,9 +1117,9 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
                         if content:
                             completion_parts.append(content)
                             if not role_sent:
-                                yield _openai_chunk(proxy_id, reasoning_content="", role="assistant")
+                                yield _openai_chunk(proxy_id, reasoning_content="", role="assistant", model=response_model)
                                 role_sent = True
-                            yield _openai_chunk(proxy_id, reasoning_content=content)
+                            yield _openai_chunk(proxy_id, reasoning_content=content, model=response_model)
                         continue
 
                 # Normal text token (str) — feed to sieve
@@ -1062,13 +1130,13 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
                             completion_parts.append(evt.data)
                             if not role_sent:
                                 if thinking_mode:
-                                    yield _openai_chunk(proxy_id, reasoning_content="")
-                                yield _openai_chunk(proxy_id, content=evt.data, role="assistant")
+                                    yield _openai_chunk(proxy_id, reasoning_content="", model=response_model)
+                                yield _openai_chunk(proxy_id, content=evt.data, role="assistant", model=response_model)
                                 role_sent = True
                             else:
-                                yield _openai_chunk(proxy_id, content=evt.data)
+                                yield _openai_chunk(proxy_id, content=evt.data, model=response_model)
                     elif evt.type == "tool_calls":
-                        for chunk in _emit_tool_calls_chunks(evt.data, proxy_id):
+                        for chunk in _emit_tool_calls_chunks(evt.data, proxy_id, model=response_model):
                             yield chunk
                         _record_turn()
                         yield "data: [DONE]\n\n"
@@ -1081,14 +1149,14 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
                     completion_parts.append(evt.data)
                     if not role_sent:
                         if thinking_mode:
-                            yield _openai_chunk(proxy_id, reasoning_content="")
-                        yield _openai_chunk(proxy_id, content=evt.data, role="assistant")
+                            yield _openai_chunk(proxy_id, reasoning_content="", model=response_model)
+                        yield _openai_chunk(proxy_id, content=evt.data, role="assistant", model=response_model)
                         role_sent = True
                     else:
-                        yield _openai_chunk(proxy_id, content=evt.data)
+                        yield _openai_chunk(proxy_id, content=evt.data, model=response_model)
                 elif evt.type == "tool_calls":
                     had_tool = True
-                    for chunk in _emit_tool_calls_chunks(evt.data, proxy_id):
+                    for chunk in _emit_tool_calls_chunks(evt.data, proxy_id, model=response_model):
                         yield chunk
 
             if had_tool:
@@ -1102,23 +1170,23 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
                 if tc_result:
                     if not role_sent:
                         if thinking_mode:
-                            yield _openai_chunk(proxy_id, reasoning_content="")
+                            yield _openai_chunk(proxy_id, reasoning_content="", model=response_model)
                         role_sent = True
-                    for chunk in _emit_tool_calls_chunks(tc_result, proxy_id):
+                    for chunk in _emit_tool_calls_chunks(tc_result, proxy_id, model=response_model):
                         yield chunk
                     _record_turn()
                     yield "data: [DONE]\n\n"
                     return
 
             _record_turn()
-            yield _openai_chunk(proxy_id, finish=True)
+            yield _openai_chunk(proxy_id, finish=True, model=response_model)
             yield "data: [DONE]\n\n"
             completion_tokens = count_text("".join(completion_parts))
-            get_stats().record(MODEL_NAME, (time.time() - t0) * 1000,
+            get_stats().record(response_model, (time.time() - t0) * 1000,
                                prompt_tokens=prompt_tokens,
                                completion_tokens=completion_tokens)
         except Exception as e:
-            get_stats().record(MODEL_NAME, (time.time() - t0) * 1000, success=False,
+            get_stats().record(response_model, (time.time() - t0) * 1000, success=False,
                                prompt_tokens=prompt_tokens)
             # Rate limit / transient empty responses are not credential
             # failures — keep the account usable instead of draining the pool.
@@ -1134,7 +1202,7 @@ async def _handle_stream(proxy_id: str, prompt: str, tools: list[ToolDef] | None
                 "id": proxy_id,
                 "object": "chat.completion.chunk",
                 "created": int(time.time()),
-                "model": MODEL_NAME,
+                "model": response_model,
                 "choices": [{
                     "index": 0,
                     "delta": {},

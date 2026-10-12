@@ -14,6 +14,7 @@ import { StateBadge } from './StateBadge'
 import { ReloginButton } from './ReloginButton'
 import { truncateMiddle } from '@/lib/utils'
 import type { Account } from '@/lib/types'
+import { useLanguage } from '@/lib/i18n'
 
 interface Props {
   accounts: Account[]
@@ -23,18 +24,19 @@ interface Props {
 }
 
 export function AccountTable({ accounts, onEdit, onDelete, onSelect }: Props) {
+  const { t } = useLanguage()
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>标识</TableHead>
-          <TableHead>来源</TableHead>
-          <TableHead>状态</TableHead>
-          <TableHead>Token</TableHead>
-          <TableHead>Cookies</TableHead>
-          <TableHead className="text-right">错误</TableHead>
-          <TableHead>最后错误</TableHead>
-          <TableHead className="text-right">操作</TableHead>
+          <TableHead>{t('account.identifier')}</TableHead>
+          <TableHead>{t('account.source')}</TableHead>
+          <TableHead>{t('account.status')}</TableHead>
+          <TableHead>{t('account.token')}</TableHead>
+          <TableHead>{t('account.cookies')}</TableHead>
+          <TableHead className="text-end">{t('account.errors')}</TableHead>
+          <TableHead>{t('account.lastError')}</TableHead>
+          <TableHead className="text-end">{t('account.actions')}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -51,7 +53,7 @@ export function AccountTable({ accounts, onEdit, onDelete, onSelect }: Props) {
               }}
               tabIndex={0}
               role="button"
-              aria-label={`查看账号 ${a.email || a.id}`}
+              aria-label={t('account.view', { name: a.email || a.id })}
             >
               <TableCell>
                 <Tooltip>
@@ -64,7 +66,7 @@ export function AccountTable({ accounts, onEdit, onDelete, onSelect }: Props) {
                 </Tooltip>
               </TableCell>
               <TableCell>
-                <Badge variant="secondary">持久化</Badge>
+                <Badge variant="secondary">{t('account.persisted')}</Badge>
               </TableCell>
               <TableCell>
                 <StateBadge state={a.state} />
@@ -84,7 +86,7 @@ export function AccountTable({ accounts, onEdit, onDelete, onSelect }: Props) {
                   <TooltipContent>{a.cookies_preview || '—'}</TooltipContent>
                 </Tooltip>
               </TableCell>
-              <TableCell className="text-right tabular-nums">
+              <TableCell className="text-end tabular-nums">
                 {a.error_count > 0 ? (
                   <span className="text-warning font-semibold">{a.error_count}</span>
                 ) : (
@@ -105,7 +107,7 @@ export function AccountTable({ accounts, onEdit, onDelete, onSelect }: Props) {
                   </TooltipContent>
                 </Tooltip>
               </TableCell>
-              <TableCell className="text-right">
+              <TableCell className="text-end">
                 <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                   {a.state === 'error' && <ReloginButton accountId={a.id} />}
                   <Tooltip>
@@ -115,12 +117,12 @@ export function AccountTable({ accounts, onEdit, onDelete, onSelect }: Props) {
                         size="icon"
                         className="h-7 w-7"
                         onClick={() => onEdit(a)}
-                        aria-label="编辑"
+                        aria-label={t('common.edit')}
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>编辑</TooltipContent>
+                    <TooltipContent>{t('common.edit')}</TooltipContent>
                   </Tooltip>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -129,12 +131,12 @@ export function AccountTable({ accounts, onEdit, onDelete, onSelect }: Props) {
                         size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-destructive"
                         onClick={() => onDelete(a)}
-                        aria-label="删除"
+                        aria-label={t('common.delete')}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent>删除</TooltipContent>
+                    <TooltipContent>{t('common.delete')}</TooltipContent>
                   </Tooltip>
                 </div>
               </TableCell>
