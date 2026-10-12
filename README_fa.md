@@ -45,24 +45,39 @@
 
 ### ۱. دریافت پروژه و نصب
 
+نصب‌کنندهٔ کاربرمحور (بدون نیاز به دسترسی مدیر سیستم):
+
+#### Windows PowerShell
+
+```powershell
+git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
+Set-Location .\deepseek-web2api-free-test
+py -3 .\scripts\install.py
+$env:Path = "$env:LOCALAPPDATA\Programs\DS2API\bin;$env:Path"
+ds2api
+```
+
+#### Windows Command Prompt
+
+```bat
+git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
+cd /d deepseek-web2api-free-test
+py -3 scripts\install.py
+set "PATH=%LOCALAPPDATA%\Programs\DS2API\bin;%PATH%"
+ds2api
+```
+
+#### macOS / Linux
+
 ```bash
 git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
 cd deepseek-web2api-free-test
-```
-
-نصب‌کنندهٔ کاربرمحور (بدون نیاز به دسترسی مدیر سیستم):
-
-```powershell
-# Windows PowerShell
-py -3 scripts\install.py
-```
-
-```bash
-# macOS / Linux
 python3 scripts/install.py
+export PATH="$HOME/.local/bin:$PATH"
+ds2api
 ```
 
-نصب‌کننده محیط مجازی می‌سازد، وابستگی‌های Python را نصب می‌کند، در صورت وجود Node.js 20+ رابط WebUI را می‌سازد و فرمان `ds2api` را به PATH کاربر اضافه می‌کند. پس از نصب یک ترمینال جدید باز کنید و `ds2api` را اجرا کنید. در ویندوز، فایل `ds2api.cmd` باعث می‌شود این فرمان هم در Command Prompt و هم در PowerShell با همین نام اجرا شود. در نصب نخست، گذرواژهٔ مدیر به‌صورت تصادفی ساخته و فقط یک‌بار نمایش داده می‌شود؛ آن را امن نگه دارید. اجرای دوبارهٔ نصب‌کننده برای به‌روزرسانی، فایل `.env` و پوشهٔ `data/` را حفظ می‌کند.
+نصب‌کننده محیط مجازی می‌سازد، وابستگی‌های Python را نصب می‌کند، در صورت وجود Node.js 20+ رابط WebUI را می‌سازد و فرمان `ds2api` را به PATH کاربر اضافه می‌کند. بلوک‌های بالا PATH ترمینال فعلی را نیز به‌روز می‌کنند تا برنامه بلافاصله اجرا شود؛ در ترمینال‌های بعدی، فرمان از PATH کاربر در دسترس است. در ویندوز، `ds2api.cmd` هم در Command Prompt و هم در PowerShell با نام `ds2api` اجرا می‌شود. در نصب نخست، گذرواژهٔ مدیر به‌صورت تصادفی ساخته و فقط یک‌بار نمایش داده می‌شود؛ آن را امن نگه دارید. اجرای دوبارهٔ نصب‌کننده برای به‌روزرسانی، فایل `.env` و پوشهٔ `data/` را حفظ می‌کند.
 
 اگر Node.js نصب نباشد، نصب در حالت API-only کامل می‌شود. برای ساخت WebUI، Node.js 20+ نصب و نصب‌کننده را دوباره اجرا کنید؛ برای ردکردن ساخت WebUI نیز `--skip-webui` را به فرمان نصب اضافه کنید.
 

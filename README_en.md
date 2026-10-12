@@ -52,34 +52,41 @@ The private web protocol cannot be live-validated in this environment because it
 
 ### Installation
 
-```bash
-git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
-cd deepseek-web2api-free-test
-```
-
 #### Recommended: per-user installer
 
 The installer needs Python 3.10+. It creates a virtual environment, installs Python dependencies, builds the WebUI when Node.js 20+ and npm are available, and adds `ds2api` to your **user** PATH. It does not require administrator rights.
 
+##### Windows PowerShell
+
 ```powershell
-# Windows PowerShell
-py -3 scripts\install.py
-```
-
-```bash
-# macOS / Linux
-python3 scripts/install.py
-```
-
-Open a new terminal after installation and run:
-
-```bash
+git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
+Set-Location .\deepseek-web2api-free-test
+py -3 .\scripts\install.py
+$env:Path = "$env:LOCALAPPDATA\Programs\DS2API\bin;$env:Path"
 ds2api
 ```
 
-On Windows, the installer adds a `ds2api.cmd` launcher, so `ds2api` works by name in both Command Prompt and PowerShell.
+##### Windows Command Prompt
 
-The installer creates `.env` with a generated admin password and displays that password once. Save it securely. On Windows, the default install location is `%LOCALAPPDATA%\Programs\DS2API`; on macOS/Linux it is `${XDG_DATA_HOME:-~/.local/share}/ds2api`. The installer preserves `.env` and `data/` when rerun to update. If Node.js is not found, installation continues in API-only mode; install Node.js 20+ and rerun to build the WebUI. Pass `--skip-webui` to intentionally skip that build.
+```bat
+git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
+cd /d deepseek-web2api-free-test
+py -3 scripts\install.py
+set "PATH=%LOCALAPPDATA%\Programs\DS2API\bin;%PATH%"
+ds2api
+```
+
+##### macOS / Linux
+
+```bash
+git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
+cd deepseek-web2api-free-test
+python3 scripts/install.py
+export PATH="$HOME/.local/bin:$PATH"
+ds2api
+```
+
+The examples update the current shell's PATH so you can start the app immediately; later terminals can run `ds2api` directly from the installed user PATH. The installer creates `.env` with a generated admin password and displays it once. Save it securely. On Windows, the default install location is `%LOCALAPPDATA%\Programs\DS2API`; on macOS/Linux it is `${XDG_DATA_HOME:-~/.local/share}/ds2api`. The installer preserves `.env` and `data/` when rerun to update. If Node.js is not found, installation continues in API-only mode; install Node.js 20+ and rerun to build the WebUI. Pass `--skip-webui` to intentionally skip that build.
 
 To uninstall, run the system Python against the installed script (not the app's virtualenv): `py -3 "$env:LOCALAPPDATA\Programs\DS2API\scripts\uninstall.py"` in Windows PowerShell, or `python3 ~/.local/share/ds2api/scripts/uninstall.py` on macOS/Linux. It removes the PATH command and application files while preserving `.env` and `data/`. Add `--purge-user-data` only if you also want to delete stored settings and account credentials. If you chose a custom `--install-dir`, substitute that path.
 

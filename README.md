@@ -50,24 +50,39 @@ The private web protocol cannot be live-validated in this environment because it
 
 ### 1. Install
 
+Recommended per-user installer (no administrator rights required).
+
+#### Windows PowerShell
+
+```powershell
+git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
+Set-Location .\deepseek-web2api-free-test
+py -3 .\scripts\install.py
+$env:Path = "$env:LOCALAPPDATA\Programs\DS2API\bin;$env:Path"
+ds2api
+```
+
+#### Windows Command Prompt
+
+```bat
+git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
+cd /d deepseek-web2api-free-test
+py -3 scripts\install.py
+set "PATH=%LOCALAPPDATA%\Programs\DS2API\bin;%PATH%"
+ds2api
+```
+
+#### macOS / Linux
+
 ```bash
 git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
 cd deepseek-web2api-free-test
-```
-
-Recommended per-user installer (no administrator rights required):
-
-```powershell
-# Windows PowerShell
-py -3 scripts\install.py
-```
-
-```bash
-# macOS / Linux
 python3 scripts/install.py
+export PATH="$HOME/.local/bin:$PATH"
+ds2api
 ```
 
-The installer creates a virtual environment, installs Python dependencies, builds the WebUI when Node.js 20+ is available, and adds the `ds2api` command to your user PATH. Open a new terminal and run `ds2api` to start the service. On Windows, the generated `ds2api.cmd` launcher is callable by that name from both Command Prompt and PowerShell. On first install, it generates and displays an admin password once; save it securely. The installer creates `.env` and preserves `.env` and `data/` when you rerun it to update.
+The installer creates a virtual environment, installs Python dependencies, builds the WebUI when Node.js 20+ is available, and adds the `ds2api` command to your user PATH. The commands above update the current shell's PATH so `ds2api` can run immediately; future terminals also find it through the installed user PATH. On Windows, `ds2api.cmd` works by name in both Command Prompt and PowerShell. On first install, the installer generates and displays an admin password once; save it securely. It creates `.env` and preserves `.env` and `data/` when rerun to update.
 
 If Node.js is not installed, setup completes in API-only mode. Install Node.js 20+ and rerun the installer to build the WebUI. You can also pass `--skip-webui` to intentionally install API-only.
 
