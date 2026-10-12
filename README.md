@@ -86,6 +86,10 @@ The installer creates a virtual environment, installs Python dependencies, build
 
 If Node.js is not installed, setup completes in API-only mode. Install Node.js 20+ and rerun the installer to build the WebUI. You can also pass `--skip-webui` to intentionally install API-only.
 
+#### Open the WebUI
+
+After `ds2api` reports that the server has started, open [http://127.0.0.1:8080/webui/](http://127.0.0.1:8080/webui/) in your browser and sign in with the admin password printed by the installer. The `ds2api` command does not open a browser automatically. If you changed `PORT` in `.env`, use that port instead of `8080`.
+
 For a manual development setup instead, create a virtual environment and install requirements:
 
 ```bash
