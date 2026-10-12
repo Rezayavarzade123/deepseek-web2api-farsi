@@ -32,6 +32,7 @@
 - امکان رمزگذاری Fernet برای اطلاعات حساب ذخیره‌شده.
 - رابط وب با انتخاب زبان **English / فارسی**؛ حالت فارسی چیدمان راست‌به‌چپ (RTL) دارد.
 - ابزار اختیاری Chromium برای ثبت یک‌بارهٔ توکن و سرآیند Cookie حساب خودتان؛ اطلاعات فقط به‌صورت محلی کپی می‌شود. [راهنمای فارسی ابزار](tools/chromium-credential-capture/README_fa.md)
+- نصب‌کنندهٔ کاربرمحور که فرمان `ds2api` را بدون دسترسی مدیر سیستم به PATH اضافه می‌کند.
 
 ## پیش‌نیازها
 
@@ -42,33 +43,48 @@
 
 ## شروع سریع
 
-### ۱. دریافت پروژه و نصب وابستگی‌ها
+### ۱. دریافت پروژه و نصب
 
 ```bash
 git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
 cd deepseek-web2api-free-test
-python -m venv .venv
 ```
 
-در ویندوز با PowerShell:
+نصب‌کنندهٔ کاربرمحور (بدون نیاز به دسترسی مدیر سیستم):
 
 ```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-Copy-Item .env.example .env
+# Windows PowerShell
+py -3 scripts\install.py
 ```
-
-در macOS و Linux:
 
 ```bash
-. .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
+# macOS / Linux
+python3 scripts/install.py
 ```
 
-در ویندوز، `start.bat` نیز می‌تواند محیط مجازی و وابستگی‌های Python را آماده کند و در صورت وجود Node/npm، WebUI را بسازد.
+نصب‌کننده محیط مجازی می‌سازد، وابستگی‌های Python را نصب می‌کند، در صورت وجود Node.js 20+ رابط WebUI را می‌سازد و فرمان `ds2api` را به PATH کاربر اضافه می‌کند. پس از نصب یک ترمینال جدید باز کنید و `ds2api` را اجرا کنید. در نصب نخست، گذرواژهٔ مدیر به‌صورت تصادفی ساخته و فقط یک‌بار نمایش داده می‌شود؛ آن را امن نگه دارید. اجرای دوبارهٔ نصب‌کننده برای به‌روزرسانی، فایل `.env` و پوشهٔ `data/` را حفظ می‌کند.
+
+اگر Node.js نصب نباشد، نصب در حالت API-only کامل می‌شود. برای ساخت WebUI، Node.js 20+ نصب و نصب‌کننده را دوباره اجرا کنید؛ برای ردکردن ساخت WebUI نیز `--skip-webui` را به فرمان نصب اضافه کنید.
+
+برای حذف نصب، از Python سیستم (نه Python محیط مجازی برنامه) استفاده کنید: در PowerShell ویندوز `py -3 "$env:LOCALAPPDATA\Programs\DS2API\scripts\uninstall.py"` و در macOS/Linux `python3 ~/.local/share/ds2api/scripts/uninstall.py` را اجرا کنید. فرمان PATH و فایل‌های برنامه حذف می‌شوند، اما `.env` و `data/` باقی می‌مانند. فقط اگر می‌خواهید تنظیم‌ها و اطلاعات حساب هم حذف شوند، `--purge-user-data` را اضافه کنید. اگر هنگام نصب `--install-dir` سفارشی تعیین کرده‌اید، همان مسیر را جایگزین کنید.
+
+راه‌اندازی دستی از checkout برای توسعه نیز ممکن است:
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+```
+
+در ویندوز، `start.bat` هم برای اجرای مستقیم از checkout در دسترس است.
 
 ### ۲. پیکربندی امن
+
+نصب‌کننده فایل `.env` را می‌سازد و گذرواژهٔ مدیر قوی و تصادفی تولید می‌کند؛ آن را بازنویسی نکنید. در نصب دستی، ابتدا فایل نمونه را کپی کنید:
+
+```bash
+cp .env.example .env
+```
 
 فایل `.env` را ویرایش کنید. برای اجرای محلی `HOST=127.0.0.1` را نگه دارید و یک گذرواژهٔ قوی و منحصربه‌فرد برای `DEEPSEEK_ADMIN_PASSWORD` تعیین کنید. مقدار پیش‌فرض `admin` را پیش از هرگونه دسترسی از شبکه تغییر دهید.
 
@@ -98,7 +114,7 @@ ALLOW_UNAUTHENTICATED_API=false
 
 ### ۴. اجرا و ساخت کلید کلاینت
 
-در ویندوز می‌توانید از `start.bat` استفاده کنید. اجرای دستی از ریشهٔ پروژه:
+اگر از نصب‌کننده استفاده کرده‌اید، در یک ترمینال جدید `ds2api` را اجرا کنید؛ این فرمان در PATH کاربر ثبت شده است. برای اجرای دستی از checkout، در ویندوز می‌توانید از `start.bat` استفاده کنید یا از ریشهٔ پروژه اجرا کنید:
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn server:app --host 127.0.0.1 --port 8080

@@ -37,6 +37,7 @@ The private web protocol cannot be live-validated in this environment because it
 - Optional Fernet encryption for stored account credentials.
 - English and Persian (Farsi) WebUI language selector; Persian uses a right-to-left layout.
 - Optional one-shot Chromium helper to copy your own DeepSeek chat token and Cookie header locally; see [the helper guide](tools/chromium-credential-capture/README.md).
+- Per-user installer that adds the `ds2api` command to PATH without administrator rights.
 
 ## Requirements
 
@@ -52,26 +53,37 @@ The private web protocol cannot be live-validated in this environment because it
 ```bash
 git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
 cd deepseek-web2api-free-test
-python -m venv .venv
 ```
 
-Activate the virtual environment and install the Python requirements:
+Recommended per-user installer (no administrator rights required):
+
+```powershell
+# Windows PowerShell
+py -3 scripts\install.py
+```
 
 ```bash
 # macOS / Linux
+python3 scripts/install.py
+```
+
+The installer creates a virtual environment, installs Python dependencies, builds the WebUI when Node.js 20+ is available, and adds the `ds2api` command to your user PATH. Open a new terminal and run `ds2api` to start the service. On first install, it generates and displays an admin password once; save it securely. The installer creates `.env` and preserves `.env` and `data/` when you rerun it to update.
+
+If Node.js is not installed, setup completes in API-only mode. Install Node.js 20+ and rerun the installer to build the WebUI. You can also pass `--skip-webui` to intentionally install API-only.
+
+For a manual development setup instead, create a virtual environment and install requirements:
+
+```bash
+python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-```powershell
-# Windows PowerShell
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-On Windows, you can instead run `start.bat`; it locates or creates a virtual environment, installs missing dependencies, builds the WebUI when needed, and starts the server.
+On Windows, `start.bat` remains available for launching from a source checkout.
 
 ### 2. Configure the server
+
+The per-user installer creates `.env` and generates a strong admin password. Do not overwrite that file. For a manual source-checkout setup only, create it with:
 
 ```bash
 cp .env.example .env
@@ -103,10 +115,14 @@ Account tokens and cookies are secrets. Do not commit them or put them in a publ
 
 ### 4. Start the service and create a client key
 
+After using the installer, open a new terminal and run `ds2api`; the command is on your user PATH. For a manual source-checkout setup, start the server with:
+
 ```bash
 # macOS / Linux / Windows (inside the virtual environment)
 python -m uvicorn server:app --host 127.0.0.1 --port 8080
 ```
+
+To uninstall, use the system Python (not the app's virtualenv): in Windows PowerShell run `py -3 "$env:LOCALAPPDATA\Programs\DS2API\scripts\uninstall.py"`; on macOS/Linux run `python3 ~/.local/share/ds2api/scripts/uninstall.py`. This removes the PATH entry and app files but preserves `.env` and `data/`; add `--purge-user-data` only if you also want those deleted. If you chose a custom `--install-dir`, substitute that path.
 
 Open `http://127.0.0.1:8080/webui/`, sign in with `DEEPSEEK_ADMIN_PASSWORD`, and create a client API key on the **Settings** page. The full key is displayed once; only its hash is stored by the server.
 

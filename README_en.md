@@ -37,6 +37,7 @@ The private web protocol cannot be live-validated in this environment because it
 - Optional Fernet encryption for stored account credentials.
 - English and Persian (Farsi) WebUI language selector; Persian uses a right-to-left layout.
 - Optional one-shot Chromium helper to copy your own DeepSeek chat token and Cookie header locally; see [the helper guide](tools/chromium-credential-capture/README.md).
+- Per-user installer that adds the `ds2api` command to PATH without administrator rights.
 
 ---
 
@@ -52,13 +53,41 @@ The private web protocol cannot be live-validated in this environment because it
 ### Installation
 
 ```bash
-# Clone the project and create a virtual environment.
 git clone https://github.com/Rezayavarzade123/deepseek-web2api-free-test.git
 cd deepseek-web2api-free-test
-python -m venv .venv
 ```
 
-Activate the environment and install dependencies:
+#### Recommended: per-user installer
+
+The installer needs Python 3.10+. It creates a virtual environment, installs Python dependencies, builds the WebUI when Node.js 20+ and npm are available, and adds `ds2api` to your **user** PATH. It does not require administrator rights.
+
+```powershell
+# Windows PowerShell
+py -3 scripts\install.py
+```
+
+```bash
+# macOS / Linux
+python3 scripts/install.py
+```
+
+Open a new terminal after installation and run:
+
+```bash
+ds2api
+```
+
+The installer creates `.env` with a generated admin password and displays that password once. Save it securely. On Windows, the default install location is `%LOCALAPPDATA%\Programs\DS2API`; on macOS/Linux it is `${XDG_DATA_HOME:-~/.local/share}/ds2api`. The installer preserves `.env` and `data/` when rerun to update. If Node.js is not found, installation continues in API-only mode; install Node.js 20+ and rerun to build the WebUI. Pass `--skip-webui` to intentionally skip that build.
+
+To uninstall, run the system Python against the installed script (not the app's virtualenv): `py -3 "$env:LOCALAPPDATA\Programs\DS2API\scripts\uninstall.py"` in Windows PowerShell, or `python3 ~/.local/share/ds2api/scripts/uninstall.py` on macOS/Linux. It removes the PATH command and application files while preserving `.env` and `data/`. Add `--purge-user-data` only if you also want to delete stored settings and account credentials. If you chose a custom `--install-dir`, substitute that path.
+
+#### Manual/source-checkout setup
+
+If you prefer to run directly from the checkout, create a virtual environment and install dependencies:
+
+```bash
+python -m venv .venv
+```
 
 ```bash
 # macOS / Linux
@@ -72,7 +101,7 @@ pip install -r requirements.txt
 pip install -r requirements.txt
 ```
 
-On Windows, `start.bat` can create/activate a virtual environment and install missing dependencies automatically.
+On Windows, `start.bat` can also create the environment, install missing dependencies, build the WebUI when possible, and start the server.
 
 ### Getting Your Credentials
 
@@ -95,8 +124,9 @@ For Chrome, Edge, or Brave, the optional [one-shot credential helper](tools/chro
 
 ### Configuration
 
+The per-user installer creates `.env` and generates an admin password. Do not overwrite that file. For a manual source-checkout setup only, create the template with:
+
 ```bash
-# Copy the environment variable template
 cp .env.example .env
 ```
 
@@ -133,21 +163,19 @@ For the full list of variables, see `.env.example` and [AGENTS.md](AGENTS.md).
 
 ### Startup
 
-```bash
-# Recommended: use start.bat (Windows)
-#   - Auto-locates Python 3.10+, detects/creates the venv (.venv / venv / env)
-#   - Validates dependencies, auto-installs if missing
-#   - Auto-runs npm build when WebUI artifacts are missing (set WEBUI_REBUILD=1 to force rebuild)
-#   - Checks process command lines and only stops entries matching known API server patterns
-#   - Prints the access URL before startup, auto-opens the browser after 3s (set WEBUI_OPEN=0 to skip)
-start.bat
+After installing per-user, open a new terminal and run:
 
-# Manual startup (inside the virtual environment):
-# macOS / Linux: .venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 8080
-# Windows:       .venv\Scripts\python -m uvicorn server:app --host 127.0.0.1 --port 8080
+```bash
+ds2api
 ```
 
-After startup the terminal shows the access URL and auto-opens the browser; sample logs:
+For a source checkout on Windows, run `start.bat`. On macOS/Linux, start manually inside the virtual environment with:
+
+```bash
+.venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 8080
+```
+
+After startup, open `http://127.0.0.1:8080/webui/`. `start.bat` may open the browser automatically; the installed `ds2api` command does not. The terminal shows logs such as:
 ```
 INFO:     Started server process [12345]
 INFO:     Waiting for application startup.
