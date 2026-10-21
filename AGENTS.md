@@ -1,6 +1,6 @@
 # Maintainer Notes — DeepSeek Web Chat API Proxy
 
-This file documents the current implementation for maintainers and coding agents. User-facing setup instructions are in `README.md`; release history is in `docs/release-notes/`.
+This file documents the current implementation for maintainers and coding agents. User-facing setup instructions are in `README.md` (Persian, the default) and `README_en.md` (English), both written in plain language. The detailed English reference is `docs/technical-guide-en.md`; release history is in `docs/release-notes/`.
 
 ## Scope and compatibility
 
@@ -9,7 +9,7 @@ This file documents the current implementation for maintainers and coding agents
 - The protocol is undocumented and may change independently of this repository. Do not claim live compatibility without testing against a real account and current web app.
 - As of 2026-10-11, DeepSeek's official API lists `deepseek-flash` as V4.1-Flash with native vision and `deepseek-v4-pro` as V4-Pro-0813 (text only); the current official changelog says Pro API service continues with billing unchanged. DeepSeek's web app is reported to combine prior quick/expert/vision modes into an adaptive Flash experience, but that product report does not specify the private request protocol.
 - The checked-in proxy config exposes only `deepseek-flash` as a local `default`-mode hint. The optional `expert` value remains for compatibility, but may no longer select a separate mode. This proxy does not call the official API, does not guarantee the web app's model selection, and currently forwards text only; image upload/content conversion is not implemented.
-- Current release: v3.4.0. Key release notes: `docs/release-notes/v3.4.0.md`.
+- Current release: v3.5.0. Key release notes: `docs/release-notes/v3.5.0.md`.
 
 ## Repository layout
 
@@ -154,4 +154,4 @@ CI is defined in `.github/workflows/ci.yml`. It runs the smoke suite, selected u
 
 ## Release notes
 
-User-visible and implementation changes are recorded in `docs/release-notes/`. The most recent release is `v3.4.0`; its release notes describe installer improvements, Farsi localization, and multi-turn conversation reuse.
+User-visible and implementation changes are recorded in `docs/release-notes/`. The most recent release is `v3.5.0`; its release notes describe the beginner-friendly documentation rewrite, the new Persian default README, and the detailed English guide moving to `docs/technical-guide-en.md`.
