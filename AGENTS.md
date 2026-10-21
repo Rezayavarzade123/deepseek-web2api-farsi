@@ -1,6 +1,6 @@
 # Maintainer Notes — DeepSeek Web Chat API Proxy
 
-This file documents the current implementation for maintainers and coding agents. User-facing setup instructions are in `README.md`; release history is in `docs/release-notes/`.
+This file documents the current implementation for maintainers and coding agents. User-facing setup instructions are in `README.md` (Persian, the default) and `README_en.md` (English), both written in plain language. The detailed English reference is `docs/technical-guide-en.md`; release history is in `docs/release-notes/`.
 
 ## Scope and compatibility
 
