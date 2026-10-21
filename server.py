@@ -134,7 +134,7 @@ def _check_rate_limit(request: Request) -> dict:
     return headers
 
 
-app = FastAPI(title="DeepSeek Chat API (Expert Preview)", version="3.4.0")
+app = FastAPI(title="DeepSeek Chat API (Expert Preview)", version="3.5.0")
 
 # ── CORS ─────────────────────────────────────────────────────────────
 # Empty ALLOWED_ORIGINS ⇒ same-origin only. We deliberately do NOT set
