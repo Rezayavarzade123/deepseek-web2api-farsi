@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useApi } from '@/hooks/useApi'
 import { ApiCallError } from '@/lib/api'
@@ -15,15 +15,15 @@ interface Props {
 export function ModelSelector({ value, onChange, labels }: Props) {
   const { t } = useLanguage()
   const { data, error } = useApi<ModelsResponse>('/v1/models')
-  const [firstRender, setFirstRender] = useState(true)
+  const models = data?.data ?? []
 
-  // Pick the first model as default if nothing is set yet.
+  // Restore the saved model when it is still available. If the server's model
+  // list changed, select a valid first model instead of keeping a stale value.
   useEffect(() => {
-    if (firstRender && !value && data?.data && data.data.length > 0) {
-      onChange(data.data[0].id)
-      setFirstRender(false)
+    if (models.length > 0 && !models.some((model) => model.id === value)) {
+      onChange(models[0].id)
     }
-  }, [data, value, onChange, firstRender])
+  }, [models, value, onChange])
 
   if (error) {
     return (
@@ -32,8 +32,6 @@ export function ModelSelector({ value, onChange, labels }: Props) {
       </div>
     )
   }
-
-  const models = data?.data ?? []
 
   return (
     <Select value={value} onValueChange={onChange}>

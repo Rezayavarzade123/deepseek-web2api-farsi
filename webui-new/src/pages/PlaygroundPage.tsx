@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { useAuthStore } from '@/stores/auth'
+import { usePlaygroundSettingsStore } from '@/stores/playground'
 import { ApiCallError } from '@/lib/api'
 import { ModelSelector } from '@/components/playground/ModelSelector'
 import { MessageList, type ChatMessage, type StreamingState } from '@/components/playground/MessageList'
@@ -44,10 +45,14 @@ export default function PlaygroundPage() {
 
   // These controls send private web-chat hints; their current upstream behavior is unverified.
   // The response model name is a local proxy alias, not proof of upstream model selection.
-  const [model, setModel] = useState('')
-  const [systemPrompt, setSystemPrompt] = useState('')
-  const [thinking, setThinking] = useState(false)
-  const [search, setSearch] = useState(false)
+  const model = usePlaygroundSettingsStore((s) => s.model)
+  const setModel = usePlaygroundSettingsStore((s) => s.setModel)
+  const systemPrompt = usePlaygroundSettingsStore((s) => s.systemPrompt)
+  const setSystemPrompt = usePlaygroundSettingsStore((s) => s.setSystemPrompt)
+  const thinking = usePlaygroundSettingsStore((s) => s.thinking)
+  const setThinking = usePlaygroundSettingsStore((s) => s.setThinking)
+  const search = usePlaygroundSettingsStore((s) => s.search)
+  const setSearch = usePlaygroundSettingsStore((s) => s.setSearch)
 
   const [input, setInput] = useState('')
   const [history, setHistory] = useState<ChatMessage[]>([])
@@ -223,6 +228,10 @@ export default function PlaygroundPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="text-[11px] text-muted-foreground">
+              {t('playground.preferencesSaved')}
+            </p>
+
             <div className="space-y-1.5">
               <Label>{t('playground.model')}</Label>
               <ModelSelector value={model} onChange={setModel} labels={modelLabels} />

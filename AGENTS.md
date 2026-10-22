@@ -113,6 +113,7 @@ Do not use these notes as evidence of current live compatibility. Validate chang
 - Keep `vite.config.ts` base path `/webui/` and the React Router basename `/webui` aligned. A mismatch produces asset 404s or a blank page.
 - User-facing copy and accessibility labels must remain in English. The backend account state values are `idle`, `busy`, and `error`; the WebUI maps them to English labels.
 - Playground fields should only expose parameters that the backend actually uses. The model selector lists the model aliases from `/v1/models`.
+- Playground model, system prompt, thinking, and search preferences persist in the browser's `ds2api-playground-settings` localStorage entry; conversation messages are intentionally not persisted.
 
 ## Configuration notes
 
