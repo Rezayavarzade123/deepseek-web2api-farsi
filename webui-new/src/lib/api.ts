@@ -55,7 +55,12 @@ export async function api<T = unknown>(
   // 401 → clear auth state and surface a typed error so the React tree
   // can react via the auth-store subscription.
   if (res.status === 401) {
-    useAuthStore.getState().logout()
+    // An older in-flight request can finish after a successful re-login (for
+    // example, when a persisted token expired during a server restart). Only
+    // clear auth if the token that failed is still the active session token.
+    if (useAuthStore.getState().token === token) {
+      useAuthStore.getState().logout()
+    }
     throw new ApiCallError(401, translate(getStoredLanguage(), 'common.unauthorized'))
   }
 
