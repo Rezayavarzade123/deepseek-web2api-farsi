@@ -121,6 +121,15 @@ def test_admin_api_key_routes_require_admin_auth(admin_client):
     assert client.delete("/admin/api/api-keys/missing").status_code == 401
 
 
+def test_admin_auth_accepts_proxy_fallback_header_and_logout(admin_client):
+    client, _, token = admin_client
+    headers = {"X-DS2API-Admin-Token": token}
+
+    assert client.get("/admin/api/api-keys", headers=headers).status_code == 200
+    assert client.post("/admin/api/logout", headers=headers).json() == {"ok": True}
+    assert client.get("/admin/api/api-keys", headers=headers).status_code == 401
+
+
 def test_admin_api_key_routes_create_list_and_revoke(admin_client):
     client, store, token = admin_client
     headers = {"Authorization": f"Bearer {token}"}
@@ -154,6 +163,20 @@ def test_admin_api_key_routes_create_list_and_revoke(admin_client):
     assert client.delete(
         f"/admin/api/api-keys/{record['id']}", headers=headers
     ).status_code == 404
+
+
+def test_admin_session_authenticates_v1_with_proxy_fallback_header(server_client):
+    client, _ = server_client
+    token = secrets.token_urlsafe(24)
+    admin._tokens.add(token)
+    try:
+        response = client.get(
+            "/v1/models",
+            headers={"X-DS2API-Admin-Token": token},
+        )
+        assert response.status_code == 200
+    finally:
+        admin._tokens.discard(token)
 
 
 def test_generated_keys_authenticate_v1_and_revocation_takes_effect(server_client):

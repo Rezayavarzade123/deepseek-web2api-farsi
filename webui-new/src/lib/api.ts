@@ -42,7 +42,11 @@ export async function api<T = unknown>(
 ): Promise<T> {
   const token = useAuthStore.getState().token
   const headers = buildHeaders(opts.headers, opts.body !== undefined)
-  if (token) headers.set('Authorization', `Bearer ${token}`)
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+    // Keep the session token reachable when a reverse proxy removes Authorization.
+    headers.set('X-DS2API-Admin-Token', token)
+  }
 
   const init: RequestInit = {
     ...opts,

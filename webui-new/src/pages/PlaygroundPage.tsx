@@ -93,6 +93,7 @@ export default function PlaygroundPage() {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
+          ...(token ? { 'X-DS2API-Admin-Token': token } : {}),
           'X-Conversation-Id': conversationId,
         },
         body: JSON.stringify({

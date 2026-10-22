@@ -88,7 +88,10 @@ def _extract_api_key(request: Request) -> str:
     auth = request.headers.get("Authorization", "")
     if auth.lower().startswith("bearer "):
         return auth[7:].strip()
-    return request.headers.get("x-api-key", "").strip()
+    return (
+        request.headers.get("x-api-key", "").strip()
+        or request.headers.get("x-ds2api-admin-token", "").strip()
+    )
 
 
 def _client_ip(request: Request) -> str:
@@ -101,9 +104,9 @@ def _check_api_auth(request: Request):
     if ALLOW_UNAUTHENTICATED_API:
         return
     # A valid admin-session token is accepted too: the webui signs its
-    # /v1 calls (model list, Playground) with the same bearer token that
-    # authenticated the admin session, and anyone holding it already has
-    # full control of the account pool.
+    # /v1 calls (model list, Playground) with the same token that
+    # authenticated the admin session. The dedicated-header fallback keeps
+    # this working when a reverse proxy strips Authorization.
     supplied = _extract_api_key(request)
     if supplied and verify_admin_token(supplied):
         return

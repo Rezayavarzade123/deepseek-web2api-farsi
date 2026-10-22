@@ -219,10 +219,20 @@ class ApiKeyCreateRequest(BaseModel):
 router = APIRouter(prefix="/admin/api")
 
 
-def _check_auth(request: Request):
+def _request_admin_token(request: Request) -> str:
+    """Read the admin token from standard auth or the proxy-safe fallback header.
+
+    Some reverse proxies strip the standard Authorization header before it
+    reaches the app. The dedicated header keeps same-origin WebUI sessions
+    working without changing the public Bearer-token API contract.
+    """
     auth = request.headers.get("Authorization", "")
-    token = auth.removeprefix("Bearer ").strip()
-    if not _verify_token(token):
+    token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    return token or request.headers.get("x-ds2api-admin-token", "").strip()
+
+
+def _check_auth(request: Request):
+    if not _verify_token(_request_admin_token(request)):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -260,8 +270,7 @@ async def login(req: LoginRequest, request: Request):
 
 @router.post("/logout")
 async def logout(request: Request):
-    auth = request.headers.get("Authorization", "")
-    token = auth.removeprefix("Bearer ").strip()
+    token = _request_admin_token(request)
     if token:
         _tokens.discard(token)
     return {"ok": True}

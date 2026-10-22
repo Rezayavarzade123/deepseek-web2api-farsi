@@ -28,10 +28,16 @@ export function TopBar({ onRefresh, refreshing }: TopBarProps) {
   const { t } = useLanguage()
 
   const handleLogout = async () => {
+    const token = useAuthStore.getState().token
     try {
       await fetch('/admin/api/logout', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${useAuthStore.getState().token}` },
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`,
+              'X-DS2API-Admin-Token': token,
+            }
+          : {},
       })
     } catch {
       // ignore — local logout still works
