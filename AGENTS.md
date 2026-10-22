@@ -114,6 +114,7 @@ Do not use these notes as evidence of current live compatibility. Validate chang
 - User-facing copy and accessibility labels must remain in English. The backend account state values are `idle`, `busy`, and `error`; the WebUI maps them to English labels.
 - Playground fields should only expose parameters that the backend actually uses. The model selector lists the model aliases from `/v1/models`.
 - Playground model, system prompt, thinking, and search preferences persist in the browser's `ds2api-playground-settings` localStorage entry; conversation messages are intentionally not persisted.
+- The Settings page displays the client API base URL from the current browser origin plus `/v1`, so it reflects the public address when the app is behind a reverse proxy.
 
 ## Configuration notes
 

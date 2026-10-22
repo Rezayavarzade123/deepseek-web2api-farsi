@@ -1,4 +1,5 @@
 import { PageHeader } from '@/components/layout/PageHeader'
+import { ApiEndpointCard } from '@/components/settings/ApiEndpointCard'
 import { ApiKeyManager } from '@/components/settings/ApiKeyManager'
 import { EnvPreview } from '@/components/settings/EnvPreview'
 import { useLanguage } from '@/lib/i18n'
@@ -11,6 +12,7 @@ export default function SettingsPage() {
         title={t('settings.title')}
         description={t('settings.description')}
       />
+      <ApiEndpointCard />
       <ApiKeyManager />
       <EnvPreview />
     </div>
