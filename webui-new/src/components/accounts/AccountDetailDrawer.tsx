@@ -142,6 +142,16 @@ function DetailRow({
   copyLabel?: string
 }) {
   const { t } = useLanguage()
+
+  async function copyValue() {
+    try {
+      await navigator.clipboard.writeText(value)
+      toast({ title: t('common.copied'), variant: 'success' })
+    } catch {
+      toast({ title: t('common.copyFailed'), variant: 'destructive' })
+    }
+  }
+
   return (
     <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
       <span className="text-muted-foreground shrink-0">{label}</span>
@@ -152,12 +162,7 @@ function DetailRow({
             variant="ghost"
             size="icon"
             className="h-6 w-6 shrink-0"
-            onClick={() => {
-              navigator.clipboard.writeText(value).then(
-                () => toast({ title: t('common.copied'), variant: 'success' }),
-                () => toast({ title: t('common.copyFailed'), variant: 'destructive' }),
-              )
-            }}
+            onClick={() => void copyValue()}
             aria-label={copyLabel ?? t('common.copy')}
           >
             <Copy className="h-3 w-3" />

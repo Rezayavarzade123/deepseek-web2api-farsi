@@ -114,14 +114,27 @@ export default function PlaygroundPage() {
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buf = ''
+      let streamError: string | null = null
 
       // Consume one "data: <json>" payload and accumulate its text.
       const handleEvent = (payload: string) => {
         if (payload === '[DONE]') return
         try {
           const obj = JSON.parse(payload)
+          if (obj.error) {
+            const message = typeof obj.error === 'string' ? obj.error : obj.error.message
+            streamError = typeof message === 'string' && message
+              ? message.slice(0, 500)
+              : t('playground.streamErrorFallback')
+            return
+          }
+
           const choice = obj.choices?.[0]
           if (!choice) return
+          if (choice.finish_reason === 'error') {
+            streamError = t('playground.streamErrorFallback')
+            return
+          }
           const delta = choice.delta ?? {}
           if (typeof delta.reasoning_content === 'string') {
             acc.reasoning += delta.reasoning_content
@@ -155,6 +168,9 @@ export default function PlaygroundPage() {
         }
       }
 
+      // Flush any incomplete UTF-8 sequence left at the end of the stream.
+      buf += decoder.decode().replace(/\r\n/g, '\n')
+
       // Flush a trailing event that reached EOF without a closing blank line.
       if (buf.trim()) {
         for (const line of buf.split('\n')) {
@@ -163,6 +179,8 @@ export default function PlaygroundPage() {
           handleEvent(trimmed.slice(5).trim())
         }
       }
+
+      if (streamError) throw new ApiCallError(res.status, streamError)
 
       setHistory([
         ...nextHistory,

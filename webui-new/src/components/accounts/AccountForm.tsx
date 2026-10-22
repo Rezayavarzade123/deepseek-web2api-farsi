@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Loader2, Plus, Save } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Plus, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,6 +21,8 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
   const [email, setEmail] = useState(account?.email ?? '')
   const [token, setToken] = useState('')
   const [cookies, setCookies] = useState('')
+  const [showToken, setShowToken] = useState(false)
+  const [showCookies, setShowCookies] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const handleSave = async () => {
@@ -52,6 +54,8 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
         setEmail('')
         setToken('')
         setCookies('')
+        setShowToken(false)
+        setShowCookies(false)
       }
     } catch (e) {
       const msg = e instanceof ApiCallError ? e.message : String(e)
@@ -76,27 +80,53 @@ export function AccountForm({ account, onSaved, onCancel }: Props) {
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="acct-token">{t('account.token')}</Label>
-        <Input
-          id="acct-token"
-          dir="ltr"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          placeholder={t(isEdit ? 'account.tokenKeepPlaceholder' : 'account.tokenPlaceholder')}
-          autoComplete="off"
-          className="font-mono text-xs"
-        />
+        <div className="relative">
+          <Input
+            id="acct-token"
+            type={showToken ? 'text' : 'password'}
+            dir="ltr"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder={t(isEdit ? 'account.tokenKeepPlaceholder' : 'account.tokenPlaceholder')}
+            autoComplete="off"
+            className="pe-10 font-mono text-xs"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute end-0 top-0 h-9 w-9 text-muted-foreground"
+            onClick={() => setShowToken((show) => !show)}
+            aria-label={t(showToken ? 'account.hideCredential' : 'account.showCredential')}
+          >
+            {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </Button>
+        </div>
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="acct-cookies">{t('account.cookies')}</Label>
-        <Input
-          id="acct-cookies"
-          dir="ltr"
-          value={cookies}
-          onChange={(e) => setCookies(e.target.value)}
-          placeholder={t(isEdit ? 'account.cookiesKeepPlaceholder' : 'account.cookiesPlaceholder')}
-          autoComplete="off"
-          className="font-mono text-xs"
-        />
+        <div className="relative">
+          <Input
+            id="acct-cookies"
+            type={showCookies ? 'text' : 'password'}
+            dir="ltr"
+            value={cookies}
+            onChange={(e) => setCookies(e.target.value)}
+            placeholder={t(isEdit ? 'account.cookiesKeepPlaceholder' : 'account.cookiesPlaceholder')}
+            autoComplete="off"
+            className="pe-10 font-mono text-xs"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute end-0 top-0 h-9 w-9 text-muted-foreground"
+            onClick={() => setShowCookies((show) => !show)}
+            aria-label={t(showCookies ? 'account.hideCredential' : 'account.showCredential')}
+          >
+            {showCookies ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </Button>
+        </div>
       </div>
       <div className="flex items-center gap-2 pt-2">
         <Button onClick={handleSave} disabled={busy}>

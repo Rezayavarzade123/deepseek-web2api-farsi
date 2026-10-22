@@ -42,25 +42,24 @@ export function AccountTable({ accounts, onEdit, onDelete, onSelect }: Props) {
       <TableBody>
         {accounts.map((a) => (
           <TableRow
-              key={a.id}
-              className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              onClick={() => onSelect(a)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  onSelect(a)
-                }
-              }}
-              tabIndex={0}
-              role="button"
-              aria-label={t('account.view', { name: a.email || a.id })}
-            >
+            key={a.id}
+            className="cursor-pointer"
+            onClick={() => onSelect(a)}
+          >
               <TableCell>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="block max-w-[160px] truncate font-medium">
+                    <button
+                      type="button"
+                      className="block max-w-[160px] truncate text-start font-medium"
+                      aria-label={t('account.view', { name: a.email || a.id })}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onSelect(a)
+                      }}
+                    >
                       {a.email || a.id.slice(0, 10)}
-                    </span>
+                    </button>
                   </TooltipTrigger>
                   <TooltipContent>{a.id}</TooltipContent>
                 </Tooltip>

@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { Activity, Users, FlaskConical, Settings, ChevronsLeft, ChevronsRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLanguage, type TranslationKey } from '@/lib/i18n'
 
 interface NavItem {
@@ -19,8 +19,25 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/settings', label: 'nav.settings', icon: Settings },
 ]
 
+const SIDEBAR_STORAGE_KEY = 'ds2api-sidebar-collapsed'
+
+function getInitialCollapsedState(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
 export function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(getInitialCollapsedState)
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed))
+    } catch {
+      // The panel remains usable when browser storage is unavailable.
+    }
+  }, [collapsed])
   const location = useLocation()
   const { t } = useLanguage()
 
